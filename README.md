@@ -12,11 +12,13 @@ dotnet run
 
 Mở địa chỉ localhost được hiển thị trong terminal.
 
-Ứng dụng mặc định dùng SQL Server LocalDB (`(localdb)\\mssqllocaldb`). Để dùng SQL Server khác, đặt biến môi trường `ONLIBRARY_DB` thành connection string trước khi chạy. Không commit connection string có mật khẩu vào mã nguồn.
+Mặc định ứng dụng dùng SQLite và tự tạo `App_Data/onlibrary.db`, nên không cần cài database server. Để dùng SQL Server, đặt `ONLIBRARY_DB` thành connection string trước khi chạy. Không commit connection string có mật khẩu vào mã nguồn.
 
 Để khởi tạo tài khoản quản trị lần đầu, đặt hai biến môi trường `ONLIBRARY_ADMIN_EMAIL` và `ONLIBRARY_ADMIN_PASSWORD` trước lần chạy đầu tiên. Ứng dụng chỉ tạo tài khoản này khi chưa tồn tại; mật khẩu được băm trước khi lưu. Đăng ký công khai chỉ tạo vai trò Độc giả.
 
 Upload yêu cầu ClamAV cài trên máy chủ. Đặt `ONLIBRARY_CLAMSCAN_PATH` thành đường dẫn chương trình `clamscan` (ví dụ `C:\\Program Files\\ClamAV\\clamscan.exe`) trước khi chạy. Nếu chưa cấu hình scanner hoặc scanner không báo sạch, ứng dụng từ chối lưu tệp. Tệp được giới hạn 25 MB, kiểm tra phần mở rộng, MIME và chữ ký/cấu trúc, sau đó đặt tên ngẫu nhiên và lưu trong `App_Data/documents` ngoài `wwwroot`. Có thể đổi thư mục gốc bằng cách triển khai `DocumentStoragePath` theo cấu hình môi trường.
+
+Khóa cookie và anti-forgery được lưu trong `App_Data/data-protection-keys-v2` và bị loại khỏi Git cùng dữ liệu cục bộ. Trên máy chủ Windows, có thể bật mã hóa DPAPI bằng `ONLIBRARY_PROTECT_KEYS_WITH_DPAPI=true`.
 
 ## Các trang hiện có
 

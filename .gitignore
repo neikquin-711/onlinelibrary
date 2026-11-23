@@ -10,6 +10,9 @@ publish/
 App_Data/
 *.mdf
 *.ldf
+*.db
+*.db-shm
+*.db-wal
 *.log
 
 # Local environment and editor files
