@@ -1,0 +1,47 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using OnLibrary.Models;
+
+namespace OnLibrary.Data;
+
+public static class LibraryDataSeeder
+{
+    public static async Task InitializeAsync(LibraryDbContext db, IPasswordHasher<LibraryUser> hasher, IConfiguration configuration)
+    {
+        await db.Database.EnsureCreatedAsync();
+        await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'StoredFileName') IS NULL ALTER TABLE [Documents] ADD [StoredFileName] nvarchar(80) NULL;");
+        await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'FileMimeType') IS NULL ALTER TABLE [Documents] ADD [FileMimeType] nvarchar(100) NULL;");
+        await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'FileSizeBytes') IS NULL ALTER TABLE [Documents] ADD [FileSizeBytes] bigint NULL;");
+        await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.Favorites', N'U') IS NULL CREATE TABLE [dbo].[Favorites] ([UserId] int NOT NULL, [DocumentId] int NOT NULL, [CreatedAt] datetime2 NOT NULL CONSTRAINT [DF_Favorites_CreatedAt] DEFAULT SYSUTCDATETIME(), CONSTRAINT [PK_Favorites] PRIMARY KEY ([UserId], [DocumentId]), CONSTRAINT [FK_Favorites_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_Favorites_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
+        await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Favorites_DocumentId' AND object_id = OBJECT_ID(N'dbo.Favorites')) CREATE INDEX [IX_Favorites_DocumentId] ON [dbo].[Favorites] ([DocumentId]);");
+        await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.Reviews', N'U') IS NULL CREATE TABLE [dbo].[Reviews] ([Id] int IDENTITY(1,1) NOT NULL, [UserId] int NOT NULL, [DocumentId] int NOT NULL, [Rating] int NOT NULL, [Comment] nvarchar(1000) NOT NULL, [CreatedAt] datetime2 NOT NULL, [UpdatedAt] datetime2 NOT NULL, CONSTRAINT [PK_Reviews] PRIMARY KEY ([Id]), CONSTRAINT [FK_Reviews_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_Reviews_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
+        await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Reviews_UserId_DocumentId' AND object_id = OBJECT_ID(N'dbo.Reviews')) CREATE UNIQUE INDEX [IX_Reviews_UserId_DocumentId] ON [dbo].[Reviews] ([UserId], [DocumentId]);");
+        await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Reviews_DocumentId' AND object_id = OBJECT_ID(N'dbo.Reviews')) CREATE INDEX [IX_Reviews_DocumentId] ON [dbo].[Reviews] ([DocumentId]);");
+        await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.ReadingHistory', N'U') IS NULL CREATE TABLE [dbo].[ReadingHistory] ([Id] int IDENTITY(1,1) NOT NULL, [UserId] int NOT NULL, [DocumentId] int NOT NULL, [LastReadAt] datetime2 NOT NULL, [OpenCount] int NOT NULL, CONSTRAINT [PK_ReadingHistory] PRIMARY KEY ([Id]), CONSTRAINT [FK_ReadingHistory_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_ReadingHistory_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
+        await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ReadingHistory_UserId_DocumentId' AND object_id = OBJECT_ID(N'dbo.ReadingHistory')) CREATE UNIQUE INDEX [IX_ReadingHistory_UserId_DocumentId] ON [dbo].[ReadingHistory] ([UserId], [DocumentId]);");
+        await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ReadingHistory_UserId_LastReadAt' AND object_id = OBJECT_ID(N'dbo.ReadingHistory')) CREATE INDEX [IX_ReadingHistory_UserId_LastReadAt] ON [dbo].[ReadingHistory] ([UserId], [LastReadAt]);");
+        if (!await db.Documents.AnyAsync())
+        {
+            db.Documents.AddRange(
+                new(1, "Nhà giả kim", "Paulo Coelho", "Văn học", 2023, "EPUB", "sand", "NH", "Hành trình của Santiago đi tìm kho báu cũng là chuyến đi khám phá tiếng gọi sâu thẳm trong chính mình.", 4.9, 1240),
+                new(2, "Tư duy nhanh và chậm", "Daniel Kahneman", "Tâm lý học", 2022, "PDF", "blue", "TD", "Cuốn sách kinh điển giúp chúng ta hiểu hai hệ thống tư duy đang định hình cách đưa ra quyết định.", 4.8, 987),
+                new(3, "Tuổi trẻ đáng giá bao nhiêu", "Rosie Nguyễn", "Kỹ năng sống", 2024, "PDF", "coral", "TT", "Những chia sẻ chân thành về học tập, trải nghiệm và cách sống một tuổi trẻ có ý nghĩa.", 4.7, 856),
+                new(4, "Đắc nhân tâm", "Dale Carnegie", "Kỹ năng sống", 2021, "EPUB", "green", "ĐN", "Nghệ thuật ứng xử thực tế và tinh tế đã truyền cảm hứng cho hàng triệu độc giả.", 4.8, 792),
+                new(5, "Sapiens: Lược sử loài người", "Yuval Noah Harari", "Lịch sử", 2024, "PDF", "violet", "SA", "Một cái nhìn bao quát về hành trình đã đưa Homo sapiens trở thành loài thống trị hành tinh.", 4.9, 728),
+                new(6, "Dám bị ghét", "Ichiro Kishimi", "Tâm lý học", 2023, "EPUB", "peach", "DG", "Đối thoại triết học về tự do, trách nhiệm và lòng can đảm để sống cuộc đời của chính mình.", 4.6, 641),
+                new(7, "Cà phê cùng Tony", "Tony Buổi Sáng", "Kỹ năng sống", 2022, "PDF", "mint", "CF", "Những câu chuyện dí dỏm về tinh thần tự lập, ham học hỏi và sự tử tế trong cuộc sống.", 4.5, 590),
+                new(8, "Đi tìm lẽ sống", "Viktor E. Frankl", "Tâm lý học", 2023, "PDF", "rose", "ĐT", "Từ trải nghiệm sinh tồn, Frankl suy ngẫm về ý nghĩa và sức mạnh tinh thần của con người.", 4.9, 542));
+            await db.SaveChangesAsync();
+        }
+
+        var adminEmail = configuration["ONLIBRARY_ADMIN_EMAIL"]?.Trim().ToLowerInvariant();
+        var adminPassword = configuration["ONLIBRARY_ADMIN_PASSWORD"];
+        if (!string.IsNullOrWhiteSpace(adminEmail) && !string.IsNullOrWhiteSpace(adminPassword) && !await db.Users.AnyAsync(u => u.Email == adminEmail))
+        {
+            var admin = new LibraryUser { Email = adminEmail, DisplayName = "Quản trị viên", Role = "Admin" };
+            admin.PasswordHash = hasher.HashPassword(admin, adminPassword);
+            db.Users.Add(admin);
+            await db.SaveChangesAsync();
+        }
+    }
+}

@@ -1,0 +1,22 @@
+# Build outputs
+bin/
+obj/
+publish/
+
+# Local package cache used by this workspace
+.nuget/
+
+# Local database, uploaded files, and logs
+App_Data/
+*.mdf
+*.ldf
+*.log
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+.vs/
+.vscode/
+*.user
+*.suo

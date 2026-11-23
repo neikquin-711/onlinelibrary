@@ -1,0 +1,33 @@
+# OnLibrary
+
+Website thư viện trực tuyến xây dựng bằng ASP.NET Core MVC (.NET 9), SQL Server/EF Core, cookie authentication, giao diện tiếng Việt và responsive.
+
+## Chạy ứng dụng
+
+```powershell
+dotnet run
+```
+
+Mở địa chỉ localhost được hiển thị trong terminal.
+
+Ứng dụng mặc định dùng SQL Server LocalDB (`(localdb)\\mssqllocaldb`). Để dùng SQL Server khác, đặt biến môi trường `ONLIBRARY_DB` thành connection string trước khi chạy. Không commit connection string có mật khẩu vào mã nguồn.
+
+Để khởi tạo tài khoản quản trị lần đầu, đặt hai biến môi trường `ONLIBRARY_ADMIN_EMAIL` và `ONLIBRARY_ADMIN_PASSWORD` trước lần chạy đầu tiên. Ứng dụng chỉ tạo tài khoản này khi chưa tồn tại; mật khẩu được băm trước khi lưu. Đăng ký công khai chỉ tạo vai trò Độc giả.
+
+Upload yêu cầu ClamAV cài trên máy chủ. Đặt `ONLIBRARY_CLAMSCAN_PATH` thành đường dẫn chương trình `clamscan` (ví dụ `C:\\Program Files\\ClamAV\\clamscan.exe`) trước khi chạy. Nếu chưa cấu hình scanner hoặc scanner không báo sạch, ứng dụng từ chối lưu tệp. Tệp được giới hạn 25 MB, kiểm tra phần mở rộng, MIME và chữ ký/cấu trúc, sau đó đặt tên ngẫu nhiên và lưu trong `App_Data/documents` ngoài `wwwroot`. Có thể đổi thư mục gốc bằng cách triển khai `DocumentStoragePath` theo cấu hình môi trường.
+
+## Các trang hiện có
+
+- `/` — trang chủ và sách được tuyển chọn.
+- `/Home/Catalog` — tìm kiếm, lọc danh mục, sắp xếp tài liệu.
+- `/Home/Details/1` — thông tin tài liệu.
+- `/Home/Read/1` — giao diện đọc mẫu.
+- `/Home/Admin` — bảng quản lý tài liệu (Admin/Thủ thư).
+- `/Home/Create` — thêm tài liệu; biểu mẫu POST có anti-forgery token (Admin/Thủ thư).
+- `/Home/DocumentFile/1` — xem/tải tệp qua controller; không lộ đường dẫn lưu trữ.
+- `/Home/MyLibrary` — danh sách yêu thích và lịch sử đọc của tài khoản (đăng nhập).
+- `/Account/Register` và `/Account/Login` — tài khoản độc giả.
+
+## Trạng thái dữ liệu
+
+Dữ liệu danh mục, tài khoản, yêu thích, đánh giá và lịch sử đọc lưu trong SQL Server. Bảng cần thiết được khởi tạo hoặc bổ sung khi ứng dụng chạy. Độc giả đã đăng nhập có thể lưu/xóa yêu thích, gửi đánh giá (mỗi người một đánh giá cho mỗi tài liệu, có thể sửa bằng cách gửi lại), và xem lịch sử đọc. Tải lên PDF, EPUB và DOCX đã được nối vào luồng tạo tài liệu; PDF mở bằng trình xem tích hợp của trình duyệt, EPUB/DOCX được tải về. Phân quyền đang dùng cookie authentication với các vai trò Admin, Librarian và Reader; tài khoản Thủ thư cần được cấp vai trò trực tiếp trong cơ sở dữ liệu cho đến khi màn hình quản lý người dùng được bổ sung.
