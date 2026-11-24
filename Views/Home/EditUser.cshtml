@@ -1,0 +1,14 @@
+@model LibraryUser
+@{ ViewData["Title"] = "Cập nhật tài khoản"; }
+<section class="create-page wrap"><div class="breadcrumbs"><a asp-action="Users">Người dùng</a><span>/</span><span>Sửa tài khoản</span></div>
+    <div class="create-card"><div class="eyebrow"><span class="eyebrow-line"></span> QUẢN TRỊ TÀI KHOẢN</div><h1>Sửa <em>tài khoản.</em></h1><p>Để trống mật khẩu mới nếu không cần đặt lại.</p>
+        @if(ViewBag.Error is not null){<div class="form-error">@ViewBag.Error</div>}
+        <form asp-action="EditUser" method="post" class="document-form"><input type="hidden" name="id" value="@Model.Id" />
+            <div class="form-field wide"><label for="displayName">Tên hiển thị</label><input id="displayName" name="displayName" value="@Model.DisplayName" maxlength="80" required /></div>
+            <div class="form-field wide"><label for="email">Email</label><input id="email" name="email" type="email" value="@Model.Email" maxlength="254" required /></div>
+            <div class="form-field"><label for="role">Vai trò</label><select id="role" name="role"><option value="Reader" selected="@(Model.Role == "Reader")">Độc giả</option><option value="Librarian" selected="@(Model.Role == "Librarian")">Thủ thư</option></select></div>
+            <div class="form-field"><label for="newPassword">Mật khẩu mới</label><input id="newPassword" name="newPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" /></div>
+            <div class="form-actions"><a class="outline-button" asp-action="Users">Hủy</a><button class="primary-button" type="submit">Lưu thay đổi <span>→</span></button></div>
+        </form>
+    </div>
+</section>

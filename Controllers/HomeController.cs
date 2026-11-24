@@ -1,15 +1,18 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.IO.Compression;
+using System.Text.RegularExpressions;
 using OnLibrary.Services;
 using OnLibrary.Data;
 using OnLibrary.Models;
 
 namespace OnLibrary.Controllers;
 
-public class HomeController(LibraryDbContext db, IWebHostEnvironment environment, IFileScanner scanner) : Controller
+public class HomeController(LibraryDbContext db, IWebHostEnvironment environment, IFileScanner scanner,
+    IPasswordHasher<LibraryUser> passwordHasher) : Controller
 {
     private const long MaxUploadBytes = 25 * 1024 * 1024;
     private string DocumentStoragePath => Path.Combine(environment.ContentRootPath, "App_Data", "documents");
@@ -307,6 +310,123 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Users() => View(await db.Users.AsNoTracking()
         .OrderBy(u => u.Role).ThenBy(u => u.DisplayName).ToListAsync());
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateUser(string? displayName, string? email, string? password, string? role)
+    {
+        var normalizedEmail = email?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(displayName) || displayName.Trim().Length > 80 || normalizedEmail is null ||
+            normalizedEmail.Length > 254 || !Regex.IsMatch(normalizedEmail, @"^[^\s@]+@[^\s@]+\.[^\s@]+$") ||
+            role is not ("Reader" or "Librarian") || password is not { Length: >= 10 and <= 128 } ||
+            !password.Any(char.IsUpper) || !password.Any(char.IsLower) || !password.Any(char.IsDigit))
+        {
+            TempData["UserAdminError"] = "Thông tin chưa hợp lệ. Mật khẩu cần ít nhất 10 ký tự, có chữ hoa, chữ thường và chữ số.";
+            return RedirectToAction(nameof(Users));
+        }
+        if (await db.Users.AnyAsync(user => user.Email == normalizedEmail))
+        {
+            TempData["UserAdminError"] = "Email này đã được đăng ký.";
+            return RedirectToAction(nameof(Users));
+        }
+        var user = new LibraryUser { Email = normalizedEmail, DisplayName = displayName.Trim(), Role = role };
+        user.PasswordHash = passwordHasher.HashPassword(user, password);
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        await RecordAdminActionAsync("Create user", "User", user.Id, $"Created {role} account {user.Email}.");
+        TempData["UserAdminNotice"] = "Đã tạo tài khoản.";
+        return RedirectToAction(nameof(Users));
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpGet]
+    public async Task<IActionResult> EditUser(int id)
+    {
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id);
+        return user is null ? NotFound() : View(user);
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditUser(int id, string? displayName, string? email, string? role, string? newPassword)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(item => item.Id == id);
+        if (user is null) return NotFound();
+        var normalizedEmail = email?.Trim().ToLowerInvariant();
+        if (user.Role == "Admin" || string.IsNullOrWhiteSpace(displayName) || displayName.Trim().Length > 80 ||
+            normalizedEmail is null || normalizedEmail.Length > 254 ||
+            !Regex.IsMatch(normalizedEmail, @"^[^\s@]+@[^\s@]+\.[^\s@]+$") || role is not ("Reader" or "Librarian"))
+        {
+            ViewBag.Error = "Thông tin không hợp lệ hoặc tài khoản Admin được bảo vệ.";
+            return View(user);
+        }
+        if (await db.Users.AnyAsync(item => item.Id != id && item.Email == normalizedEmail))
+        {
+            ViewBag.Error = "Email này đã được tài khoản khác sử dụng.";
+            return View(user);
+        }
+        if (!string.IsNullOrEmpty(newPassword))
+        {
+            if (newPassword.Length is < 10 or > 128 || !newPassword.Any(char.IsUpper) || !newPassword.Any(char.IsLower) || !newPassword.Any(char.IsDigit))
+            {
+                ViewBag.Error = "Mật khẩu mới cần ít nhất 10 ký tự, có chữ hoa, chữ thường và chữ số.";
+                return View(user);
+            }
+            user.PasswordHash = passwordHasher.HashPassword(user, newPassword);
+        }
+        user.DisplayName = displayName.Trim();
+        user.Email = normalizedEmail;
+        user.Role = role;
+        await db.SaveChangesAsync();
+        await RecordAdminActionAsync("Update user", "User", id, $"Updated account {user.Email}.");
+        TempData["UserAdminNotice"] = "Đã cập nhật tài khoản.";
+        return RedirectToAction(nameof(Users));
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteUser(int id)
+    {
+        if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId) || actorId == id)
+        {
+            TempData["UserAdminError"] = "Không thể xóa tài khoản đang sử dụng.";
+            return RedirectToAction(nameof(Users));
+        }
+        var user = await db.Users.FirstOrDefaultAsync(item => item.Id == id);
+        if (user is null) return NotFound();
+        if (user.Role == "Admin")
+        {
+            TempData["UserAdminError"] = "Tài khoản Admin được bảo vệ.";
+            return RedirectToAction(nameof(Users));
+        }
+        var email = user.Email;
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var reviewDocumentIds = await db.Reviews.Where(review => review.UserId == id).Select(review => review.DocumentId).ToListAsync();
+        db.Favorites.RemoveRange(db.Favorites.Where(item => item.UserId == id));
+        db.Reviews.RemoveRange(db.Reviews.Where(item => item.UserId == id));
+        db.ReadingHistory.RemoveRange(db.ReadingHistory.Where(item => item.UserId == id));
+        db.DocumentDownloads.RemoveRange(db.DocumentDownloads.Where(item => item.UserId == id));
+        db.DocumentReports.RemoveRange(db.DocumentReports.Where(item => item.UserId == id));
+        var resolvedReports = await db.DocumentReports.Where(item => item.ResolvedByUserId == id).ToListAsync();
+        foreach (var report in resolvedReports) report.ResolvedByUserId = null;
+        db.Users.Remove(user);
+        await db.SaveChangesAsync();
+        foreach (var documentId in reviewDocumentIds.Distinct())
+        {
+            var average = await db.Reviews.Where(review => review.DocumentId == documentId && !review.IsHidden)
+                .Select(review => (double?)review.Rating).AverageAsync() ?? 0;
+            var document = await db.Documents.FirstOrDefaultAsync(item => item.Id == documentId);
+            if (document is not null) document.Rating = average;
+        }
+        await db.SaveChangesAsync();
+        await RecordAdminActionAsync("Delete user", "User", id, $"Deleted account {email} and associated reader activity.");
+        await transaction.CommitAsync();
+        TempData["UserAdminNotice"] = "Đã xóa tài khoản và dữ liệu cá nhân liên quan.";
+        return RedirectToAction(nameof(Users));
+    }
 
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> AuditLog() => View(await db.AdminAuditLogs.AsNoTracking()
