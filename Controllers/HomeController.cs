@@ -48,6 +48,17 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         return View(new CatalogViewModel(documents, q, category ?? "Tất cả", sort ?? "popular", page, totalPages, total, author, yearFrom, yearTo));
     }
 
+    public async Task<IActionResult> Categories()
+    {
+        var categories = await db.LibraryReferences.AsNoTracking()
+            .Where(reference => reference.Type == "Category" && reference.IsActive)
+            .OrderBy(reference => reference.Name)
+            .Select(reference => new CategoryCard(reference.Name, reference.Description,
+                db.Documents.Count(document => document.Category == reference.Name && document.IsApproved)))
+            .ToListAsync();
+        return View(categories);
+    }
+
     public async Task<IActionResult> Details(int id)
     {
         var document = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id && (d.IsApproved || User.IsInRole("Admin") || User.IsInRole("Librarian")));

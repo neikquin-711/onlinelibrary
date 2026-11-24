@@ -1,0 +1,21 @@
+@model IReadOnlyList<CategoryCard>
+@{ ViewData["Title"] = "Danh mục chủ đề"; }
+<section class="topic-page wrap">
+    <div class="breadcrumbs"><a asp-action="Index">Trang chủ</a><span>/</span><span>Danh mục</span></div>
+    <div class="eyebrow"><span class="eyebrow-line"></span> KHÁM PHÁ THEO CHỦ ĐỀ</div>
+    <h1>Danh mục <em>tri thức.</em></h1>
+    <p class="catalog-intro">Chọn một chủ đề để xem những tài liệu phù hợp.</p>
+    @if(Model.Count == 0){<div class="empty-state">Thư viện chưa có chủ đề nào.</div>}
+    <div class="topic-grid">
+        @for(var i = 0; i < Model.Count; i++)
+        {
+            var topic = Model[i];
+            <a class="topic-card" asp-action="Catalog" asp-route-category="@topic.Name">
+                <span class="topic-number">@((i + 1).ToString("00"))</span>
+                <span class="topic-copy"><strong>@topic.Name</strong><small>@(string.IsNullOrWhiteSpace(topic.Description) ? "Tài liệu được tuyển chọn theo chủ đề này." : topic.Description)</small></span>
+                <span class="topic-count">@topic.DocumentCount tài liệu</span>
+                <span class="topic-arrow" aria-hidden="true">↗</span>
+            </a>
+        }
+    </div>
+</section>
