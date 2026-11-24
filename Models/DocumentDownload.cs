@@ -1,0 +1,9 @@
+namespace OnLibrary.Models;
+
+public sealed class DocumentDownload
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public int DocumentId { get; set; }
+    public DateTime DownloadedAt { get; set; } = DateTime.UtcNow;
+}

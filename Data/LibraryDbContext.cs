@@ -11,6 +11,7 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
     public DbSet<LibraryReview> Reviews => Set<LibraryReview>();
     public DbSet<ReadingHistory> ReadingHistory => Set<ReadingHistory>();
     public DbSet<DocumentReport> DocumentReports => Set<DocumentReport>();
+    public DbSet<DocumentDownload> DocumentDownloads => Set<DocumentDownload>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,6 +64,14 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
             entity.HasIndex(r => new { r.Status, r.CreatedAt });
             entity.HasOne<LibraryUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<LibraryDocument>().WithMany().HasForeignKey(r => r.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<DocumentDownload>(entity =>
+        {
+            entity.HasKey(d => d.Id);
+            entity.HasIndex(d => new { d.UserId, d.DownloadedAt });
+            entity.HasIndex(d => d.DocumentId);
+            entity.HasOne<LibraryUser>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<LibraryDocument>().WithMany().HasForeignKey(d => d.DocumentId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

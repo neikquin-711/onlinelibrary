@@ -179,7 +179,10 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         var history = await db.ReadingHistory.Where(h => h.UserId == userId).OrderByDescending(h => h.LastReadAt)
             .Join(db.Documents, item => item.DocumentId, document => document.Id,
                 (item, document) => new LibraryHistoryItem(document, item.LastReadAt, item.OpenCount)).Take(50).AsNoTracking().ToListAsync();
-        return View(new MyLibraryViewModel(favorites, history));
+        var downloads = await db.DocumentDownloads.Where(item => item.UserId == userId).OrderByDescending(item => item.DownloadedAt)
+            .Join(db.Documents, item => item.DocumentId, document => document.Id,
+                (item, document) => new LibraryDownloadItem(document, item.DownloadedAt)).Take(50).AsNoTracking().ToListAsync();
+        return View(new MyLibraryViewModel(favorites, history, downloads));
     }
 
     [HttpGet]
@@ -199,6 +202,11 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         if (safeName != document.StoredFileName || safeName != Path.GetFileNameWithoutExtension(safeName) + Path.GetExtension(safeName)) return NotFound();
         var path = Path.Combine(DocumentStoragePath, safeName);
         if (!System.IO.File.Exists(path)) return NotFound("Không tìm thấy tệp tài liệu.");
+        if (download && int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            db.DocumentDownloads.Add(new DocumentDownload { UserId = userId, DocumentId = id, DownloadedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
         var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true);
         var downloadName = $"{document.Title}{Path.GetExtension(safeName)}";
         return download
@@ -207,7 +215,17 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     }
 
     [Authorize(Roles = "Admin,Librarian")]
-    public async Task<IActionResult> Admin() => View(await db.Documents.AsNoTracking().OrderByDescending(d => d.Id).ToListAsync());
+    public async Task<IActionResult> Admin()
+    {
+        var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var documents = await db.Documents.AsNoTracking().OrderByDescending(d => d.Id).ToListAsync();
+        var model = new AdminDashboardViewModel(documents, documents.Count,
+            await db.Users.CountAsync(u => u.Role == "Reader"),
+            await db.ReadingHistory.Where(h => h.LastReadAt >= monthStart).SumAsync(h => (long?)h.OpenCount) ?? 0,
+            await db.DocumentDownloads.CountAsync(d => d.DownloadedAt >= monthStart),
+            await db.DocumentReports.CountAsync(r => r.Status == "Pending"));
+        return View(model);
+    }
 
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Users() => View(await db.Users.AsNoTracking()
