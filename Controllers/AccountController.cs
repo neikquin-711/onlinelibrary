@@ -123,7 +123,7 @@ public class AccountController(LibraryDbContext db, IPasswordHasher<LibraryUser>
         }
         if (!string.IsNullOrEmpty(newPassword))
         {
-            if (newPassword.Length is < 10 or > 128 || !newPassword.Any(char.IsUpper) ||
+            if (newPassword.Length is < 8 or > 128 || !newPassword.Any(char.IsUpper) ||
                 !newPassword.Any(char.IsLower) || !newPassword.Any(char.IsDigit) || newPassword != confirmPassword)
             {
                 ViewBag.Error = "Mật khẩu mới phải khớp xác nhận, dài 10–128 ký tự và có chữ hoa, chữ thường, chữ số.";
