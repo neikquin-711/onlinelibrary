@@ -20,12 +20,12 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     {
         ViewBag.Categories = await db.LibraryReferences.AsNoTracking().Where(r => r.Type == "Category" && r.IsActive)
             .OrderBy(r => r.Name).ToListAsync();
-        return View(await db.Documents.AsNoTracking().OrderByDescending(d => d.Reads).ToListAsync());
+        return View(await db.Documents.AsNoTracking().Where(d => d.IsApproved).OrderByDescending(d => d.Reads).ToListAsync());
     }
 
     public async Task<IActionResult> Catalog(string? q, string? category, string? author, int? yearFrom, int? yearTo, string? sort = "popular", int page = 1)
     {
-        var query = db.Documents.AsNoTracking().AsQueryable();
+        var query = db.Documents.AsNoTracking().Where(d => d.IsApproved).AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
         {
             var term = q.Trim();
@@ -50,7 +50,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
 
     public async Task<IActionResult> Details(int id)
     {
-        var document = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+        var document = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id && (d.IsApproved || User.IsInRole("Admin") || User.IsInRole("Librarian")));
         if (document is null) return NotFound();
         ViewBag.Reviews = await db.Reviews.AsNoTracking().Where(r => r.DocumentId == id && !r.IsHidden)
             .OrderByDescending(r => r.UpdatedAt).Take(50)
@@ -71,7 +71,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
 
     public async Task<IActionResult> Read(int id)
     {
-        var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == id);
+        var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == id && (d.IsApproved || User.IsInRole("Admin") || User.IsInRole("Librarian")));
         if (document is not null)
         {
             var entry = db.Entry(document);
@@ -238,7 +238,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     [HttpGet]
     public async Task<IActionResult> DocumentFile(int id, bool download = false)
     {
-        var document = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+        var document = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id && (d.IsApproved || User.IsInRole("Admin") || User.IsInRole("Librarian")));
         if (document?.StoredFileName is null) return NotFound("Tài liệu này chưa có tệp đọc.");
         var contentType = document.Format switch
         {
@@ -273,8 +273,29 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             await db.Users.CountAsync(u => u.Role == "Reader"),
             await db.ReadingHistory.Where(h => h.LastReadAt >= monthStart).SumAsync(h => (long?)h.OpenCount) ?? 0,
             await db.DocumentDownloads.CountAsync(d => d.DownloadedAt >= monthStart),
-            await db.DocumentReports.CountAsync(r => r.Status == "Pending"));
+            await db.DocumentReports.CountAsync(r => r.Status == "Pending"),
+            await db.Documents.CountAsync(d => !d.IsApproved && !d.IsRejected));
         return View(model);
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
+    public async Task<IActionResult> DocumentModeration() => View(await db.Documents.AsNoTracking()
+        .Where(document => !document.IsApproved && !document.IsRejected).OrderBy(document => document.Id).ToListAsync());
+
+    [Authorize(Roles = "Admin,Librarian")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetDocumentApproval(int id, bool approve)
+    {
+        var document = await db.Documents.FirstOrDefaultAsync(item => item.Id == id);
+        if (document is null) return NotFound();
+        document.IsApproved = approve;
+        document.IsRejected = !approve;
+        await db.SaveChangesAsync();
+        await RecordAdminActionAsync(approve ? "Approve document" : "Reject document", "Document", id,
+            $"{(approve ? "Approved" : "Rejected")} document: {document.Title}.");
+        TempData["DocumentModerationNotice"] = approve ? "Đã duyệt tài liệu và đưa vào danh mục." : "Đã từ chối tài liệu; tài liệu vẫn được lưu trong kho quản trị.";
+        return RedirectToAction(nameof(DocumentModeration));
     }
 
     [Authorize(Roles = "Admin,Librarian")]
@@ -607,6 +628,8 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             document.Format = format!;
             document.Initials = new string(title.Trim().Take(2).ToArray()).ToUpperInvariant();
             document.Description = description.Trim();
+            document.IsApproved = false;
+            document.IsRejected = false;
             await db.SaveChangesAsync();
 
         }
@@ -684,7 +707,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             System.IO.File.Move(temporaryPath, finalPath);
             db.Documents.Add(new LibraryDocument(0, title.Trim(), author.Trim(), category!, year, format,
                 colors[count % colors.Length], new string(title.Trim().Take(2).ToArray()).ToUpperInvariant(), description.Trim(), 0, 0)
-            { Publisher = publisher!, StoredFileName = storedName, FileMimeType = expectedMime, FileSizeBytes = file.Length });
+            { Publisher = publisher!, StoredFileName = storedName, FileMimeType = expectedMime, FileSizeBytes = file.Length, IsApproved = false });
             await db.SaveChangesAsync();
         }
         catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or TimeoutException or IOException or DbUpdateException)

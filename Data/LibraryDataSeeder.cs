@@ -16,6 +16,8 @@ public static class LibraryDataSeeder
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'FileSizeBytes') IS NULL ALTER TABLE [Documents] ADD [FileSizeBytes] bigint NULL;");
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'Publisher') IS NULL ALTER TABLE [Documents] ADD [Publisher] nvarchar(120) NOT NULL CONSTRAINT [DF_Documents_Publisher] DEFAULT N'';");
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Reviews', 'IsHidden') IS NULL ALTER TABLE [Reviews] ADD [IsHidden] bit NOT NULL CONSTRAINT [DF_Reviews_IsHidden] DEFAULT 0;");
+            await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'IsApproved') IS NULL ALTER TABLE [Documents] ADD [IsApproved] bit NOT NULL CONSTRAINT [DF_Documents_IsApproved] DEFAULT 1;");
+            await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'IsRejected') IS NULL ALTER TABLE [Documents] ADD [IsRejected] bit NOT NULL CONSTRAINT [DF_Documents_IsRejected] DEFAULT 0;");
             await db.Database.ExecuteSqlRawAsync("""IF OBJECT_ID(N'dbo.AdminAuditLogs', N'U') IS NULL CREATE TABLE [dbo].[AdminAuditLogs] ([Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_AdminAuditLogs] PRIMARY KEY, [ActorEmail] nvarchar(254) NOT NULL, [Action] nvarchar(40) NOT NULL, [EntityType] nvarchar(40) NOT NULL, [EntityId] int NULL, [Summary] nvarchar(500) NOT NULL, [CreatedAt] datetime2 NOT NULL);""");
             await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.Favorites', N'U') IS NULL CREATE TABLE [dbo].[Favorites] ([UserId] int NOT NULL, [DocumentId] int NOT NULL, [CreatedAt] datetime2 NOT NULL CONSTRAINT [DF_Favorites_CreatedAt] DEFAULT SYSUTCDATETIME(), CONSTRAINT [PK_Favorites] PRIMARY KEY ([UserId], [DocumentId]), CONSTRAINT [FK_Favorites_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_Favorites_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
             await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Favorites_DocumentId' AND object_id = OBJECT_ID(N'dbo.Favorites')) CREATE INDEX [IX_Favorites_DocumentId] ON [dbo].[Favorites] ([DocumentId]);");
@@ -36,6 +38,8 @@ public static class LibraryDataSeeder
         else if (db.Database.IsSqlite())
         {
             await EnsureSqlitePublisherColumnAsync(db);
+            await EnsureSqliteDocumentApprovalColumnAsync(db);
+            await EnsureSqliteDocumentRejectionColumnAsync(db);
             await EnsureSqliteReviewHiddenColumnAsync(db);
             await db.Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS \"DocumentReports\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_DocumentReports\" PRIMARY KEY AUTOINCREMENT, \"UserId\" INTEGER NOT NULL, \"DocumentId\" INTEGER NOT NULL, \"Reason\" TEXT NOT NULL, \"Details\" TEXT NOT NULL, \"Status\" TEXT NOT NULL, \"CreatedAt\" TEXT NOT NULL, \"ResolvedAt\" TEXT NULL, \"ResolvedByUserId\" INTEGER NULL, CONSTRAINT \"FK_DocumentReports_Users\" FOREIGN KEY (\"UserId\") REFERENCES \"Users\" (\"Id\") ON DELETE CASCADE, CONSTRAINT \"FK_DocumentReports_Documents\" FOREIGN KEY (\"DocumentId\") REFERENCES \"Documents\" (\"Id\") ON DELETE CASCADE);");
             await db.Database.ExecuteSqlRawAsync("CREATE INDEX IF NOT EXISTS \"IX_DocumentReports_Status_CreatedAt\" ON \"DocumentReports\" (\"Status\", \"CreatedAt\");");
@@ -119,6 +123,42 @@ public static class LibraryDataSeeder
                 if (reader.GetString(1).Equals("IsHidden", StringComparison.OrdinalIgnoreCase)) { exists = true; break; }
             await reader.CloseAsync();
             if (!exists) await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"Reviews\" ADD COLUMN \"IsHidden\" INTEGER NOT NULL DEFAULT 0;");
+        }
+        finally { await db.Database.CloseConnectionAsync(); }
+    }
+
+    private static async Task EnsureSqliteDocumentApprovalColumnAsync(LibraryDbContext db)
+    {
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            var connection = db.Database.GetDbConnection();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA table_info(\"Documents\")";
+            await using var reader = await command.ExecuteReaderAsync();
+            var exists = false;
+            while (await reader.ReadAsync())
+                if (reader.GetString(1).Equals("IsApproved", StringComparison.OrdinalIgnoreCase)) { exists = true; break; }
+            await reader.CloseAsync();
+            if (!exists) await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"Documents\" ADD COLUMN \"IsApproved\" INTEGER NOT NULL DEFAULT 1;");
+        }
+        finally { await db.Database.CloseConnectionAsync(); }
+    }
+
+    private static async Task EnsureSqliteDocumentRejectionColumnAsync(LibraryDbContext db)
+    {
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            var connection = db.Database.GetDbConnection();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA table_info(\"Documents\")";
+            await using var reader = await command.ExecuteReaderAsync();
+            var exists = false;
+            while (await reader.ReadAsync())
+                if (reader.GetString(1).Equals("IsRejected", StringComparison.OrdinalIgnoreCase)) { exists = true; break; }
+            await reader.CloseAsync();
+            if (!exists) await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"Documents\" ADD COLUMN \"IsRejected\" INTEGER NOT NULL DEFAULT 0;");
         }
         finally { await db.Database.CloseConnectionAsync(); }
     }

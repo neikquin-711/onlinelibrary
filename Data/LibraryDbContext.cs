@@ -28,6 +28,8 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
             entity.Property(d => d.Color).HasMaxLength(20).IsRequired();
             entity.Property(d => d.Initials).HasMaxLength(8).IsRequired();
             entity.Property(d => d.Description).HasMaxLength(1000).IsRequired();
+            entity.Property(d => d.IsApproved).HasDefaultValue(true);
+            entity.Property(d => d.IsRejected).HasDefaultValue(false);
             entity.Property(d => d.StoredFileName).HasMaxLength(80);
             entity.Property(d => d.FileMimeType).HasMaxLength(100);
         });

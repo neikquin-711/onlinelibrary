@@ -14,6 +14,8 @@ public sealed class LibraryDocument
     public string Description { get; set; } = "";
     public double Rating { get; set; }
     public int Reads { get; set; }
+    public bool IsApproved { get; set; } = true;
+    public bool IsRejected { get; set; }
     public string? StoredFileName { get; set; }
     public string? FileMimeType { get; set; }
     public long? FileSizeBytes { get; set; }
