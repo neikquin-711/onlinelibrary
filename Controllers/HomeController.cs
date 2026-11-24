@@ -212,6 +212,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         report.ResolvedAt = DateTime.UtcNow;
         report.ResolvedByUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         await db.SaveChangesAsync();
+        await RecordAdminActionAsync("Resolve report", "DocumentReport", reportId, $"Set report status to {decision}.");
         TempData["ReportAdminNotice"] = "Đã cập nhật trạng thái báo cáo.";
         return RedirectToAction(nameof(Reports));
     }
@@ -308,6 +309,10 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         .OrderBy(u => u.Role).ThenBy(u => u.DisplayName).ToListAsync());
 
     [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> AuditLog() => View(await db.AdminAuditLogs.AsNoTracking()
+        .OrderByDescending(log => log.CreatedAt).Take(250).ToListAsync());
+
+    [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SetUserRole(int id, string? role)
@@ -326,6 +331,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         }
         user.Role = role;
         await db.SaveChangesAsync();
+        await RecordAdminActionAsync("Update role", "User", id, $"Changed role for {user.Email} to {role}.");
         TempData["UserAdminNotice"] = $"Đã cập nhật vai trò của {user.DisplayName}.";
         return RedirectToAction(nameof(Users));
     }
@@ -347,6 +353,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         {
             db.LibraryReferences.Add(new LibraryReference { Type = type!, Name = name.Trim(), Description = description?.Trim() ?? "" });
             await db.SaveChangesAsync();
+            await RecordAdminActionAsync("Add reference", type!, null, $"Added reference: {name.Trim()}.");
             TempData["ReferenceNotice"] = "Đã thêm mục thư viện.";
         }
         return RedirectToAction(nameof(References));
@@ -378,6 +385,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             reference.Name = newName;
             reference.Description = description?.Trim() ?? "";
             await db.SaveChangesAsync();
+            await RecordAdminActionAsync("Update reference", reference.Type, reference.Id, $"Updated reference: {reference.Name}.");
             TempData["ReferenceNotice"] = "Đã cập nhật mục và đồng bộ các tài liệu đang sử dụng mục này.";
         }
         return RedirectToAction(nameof(References));
@@ -397,6 +405,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         {
             db.LibraryReferences.Remove(reference);
             await db.SaveChangesAsync();
+            await RecordAdminActionAsync("Delete reference", reference.Type, reference.Id, $"Deleted reference: {reference.Name}.");
             TempData["ReferenceNotice"] = "Đã xóa mục thư viện.";
         }
         return RedirectToAction(nameof(References));
@@ -646,4 +655,17 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
 
     private static bool IsReferenceType(string? type) => type is "Category" or "Author" or "Publisher";
     private static int ReferenceNameLimit(string? type) => type switch { "Category" => 60, "Author" => 100, "Publisher" => 120, _ => 0 };
+
+    private async Task RecordAdminActionAsync(string action, string entityType, int? entityId, string summary)
+    {
+        db.AdminAuditLogs.Add(new AdminAuditLog
+        {
+            ActorEmail = User.FindFirstValue(ClaimTypes.Email) ?? "unknown",
+            Action = action,
+            EntityType = entityType,
+            EntityId = entityId,
+            Summary = summary.Length <= 500 ? summary : summary[..500]
+        });
+        await db.SaveChangesAsync();
+    }
 }

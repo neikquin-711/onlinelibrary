@@ -13,6 +13,7 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
     public DbSet<DocumentReport> DocumentReports => Set<DocumentReport>();
     public DbSet<DocumentDownload> DocumentDownloads => Set<DocumentDownload>();
     public DbSet<LibraryReference> LibraryReferences => Set<LibraryReference>();
+    public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -83,6 +84,15 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
             entity.Property(r => r.Type).HasMaxLength(20).IsRequired();
             entity.Property(r => r.Name).HasMaxLength(120).IsRequired();
             entity.Property(r => r.Description).HasMaxLength(500).IsRequired();
+        });
+        modelBuilder.Entity<AdminAuditLog>(entity =>
+        {
+            entity.HasKey(log => log.Id);
+            entity.Property(log => log.ActorEmail).HasMaxLength(254).IsRequired();
+            entity.Property(log => log.Action).HasMaxLength(40).IsRequired();
+            entity.Property(log => log.EntityType).HasMaxLength(40).IsRequired();
+            entity.Property(log => log.Summary).HasMaxLength(500).IsRequired();
+            entity.HasIndex(log => log.CreatedAt);
         });
     }
 }

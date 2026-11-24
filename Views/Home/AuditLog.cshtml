@@ -1,0 +1,10 @@
+@model IReadOnlyList<AdminAuditLog>
+@{ ViewData["Title"] = "Nhật ký hệ thống"; }
+<section class="admin wrap">
+    <div class="breadcrumbs"><a asp-action="Admin">Quản lý</a><span>/</span><span>Nhật ký hệ thống</span></div>
+    <div class="admin-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> THEO DÕI QUẢN TRỊ</div><h1>Nhật ký <em>hệ thống.</em></h1><p>250 thao tác quản trị gần nhất.</p></div></div>
+    <div class="table-wrap"><table><thead><tr><th>THỜI GIAN</th><th>NGƯỜI THỰC HIỆN</th><th>THAO TÁC</th><th>ĐỐI TƯỢNG</th><th>CHI TIẾT</th></tr></thead><tbody>
+    @foreach(var log in Model){<tr><td>@log.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td><td>@log.ActorEmail</td><td><span class="format-pill">@log.Action</span></td><td>@log.EntityType @(log.EntityId is null ? "" : $"#{log.EntityId}")</td><td>@log.Summary</td></tr>}
+    </tbody></table></div>
+    @if(Model.Count == 0){<div class="empty-state">Chưa có thao tác quản trị nào được ghi nhận.</div>}
+</section>
