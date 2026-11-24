@@ -15,7 +15,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     private string DocumentStoragePath => Path.Combine(environment.ContentRootPath, "App_Data", "documents");
     public async Task<IActionResult> Index() => View(await db.Documents.AsNoTracking().OrderByDescending(d => d.Reads).ToListAsync());
 
-    public async Task<IActionResult> Catalog(string? q, string? category, string? sort = "popular")
+    public async Task<IActionResult> Catalog(string? q, string? category, string? sort = "popular", int page = 1)
     {
         var query = db.Documents.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
@@ -25,22 +25,26 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         }
         if (!string.IsNullOrWhiteSpace(category) && category != "Tất cả") query = query.Where(d => d.Category == category);
         query = sort switch { "newest" => query.OrderByDescending(d => d.Year), "rating" => query.OrderByDescending(d => d.Rating), _ => query.OrderByDescending(d => d.Reads) };
-        ViewBag.Query = q; ViewBag.Category = category ?? "Tất cả"; ViewBag.Sort = sort;
-        return View(await query.Take(100).ToListAsync());
+        const int pageSize = 12;
+        var total = await query.CountAsync();
+        var totalPages = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
+        page = Math.Clamp(page, 1, totalPages);
+        var documents = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        return View(new CatalogViewModel(documents, q, category ?? "Tất cả", sort ?? "popular", page, totalPages, total));
     }
 
     public async Task<IActionResult> Details(int id)
     {
         var document = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
         if (document is null) return NotFound();
-        ViewBag.Reviews = await db.Reviews.AsNoTracking().Where(r => r.DocumentId == id)
+        ViewBag.Reviews = await db.Reviews.AsNoTracking().Where(r => r.DocumentId == id && !r.IsHidden)
             .OrderByDescending(r => r.UpdatedAt).Take(50)
             .Join(db.Users, review => review.UserId, user => user.Id,
                 (review, user) => new ReviewCard(user.DisplayName, review.Rating, review.Comment, review.UpdatedAt))
             .ToListAsync();
-        var reviewCount = await db.Reviews.CountAsync(r => r.DocumentId == id);
+        var reviewCount = await db.Reviews.CountAsync(r => r.DocumentId == id && !r.IsHidden);
         ViewBag.ReviewCount = reviewCount;
-        ViewBag.AverageRating = reviewCount == 0 ? document.Rating : await db.Reviews.Where(r => r.DocumentId == id).AverageAsync(r => (double)r.Rating);
+        ViewBag.AverageRating = reviewCount == 0 ? document.Rating : await db.Reviews.Where(r => r.DocumentId == id && !r.IsHidden).AverageAsync(r => (double)r.Rating);
         ViewBag.IsFavorite = false;
         if (int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
         {
@@ -98,11 +102,41 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         if (review is null) db.Reviews.Add(new LibraryReview { UserId = userId, DocumentId = id, Rating = rating, Comment = comment.Trim() });
         else { review.Rating = rating; review.Comment = comment.Trim(); review.UpdatedAt = DateTime.UtcNow; }
         await db.SaveChangesAsync();
-        var average = await db.Reviews.Where(r => r.DocumentId == id).AverageAsync(r => (double)r.Rating);
+        var average = await db.Reviews.Where(r => r.DocumentId == id && !r.IsHidden).AverageAsync(r => (double)r.Rating);
         var document = await db.Documents.FirstAsync(d => d.Id == id);
         db.Entry(document).Property(d => d.Rating).CurrentValue = average;
         await db.SaveChangesAsync();
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
+    public async Task<IActionResult> ReviewModeration()
+    {
+        var reviews = await db.Reviews.AsNoTracking().OrderByDescending(review => review.UpdatedAt).Take(200)
+            .Join(db.Documents, review => review.DocumentId, document => document.Id,
+                (review, document) => new { review, document.Title })
+            .Join(db.Users, item => item.review.UserId, user => user.Id,
+                (item, user) => new ReviewModerationRow(item.review.Id, item.review.DocumentId, item.Title,
+                    user.DisplayName, item.review.Rating, item.review.Comment, item.review.UpdatedAt, item.review.IsHidden))
+            .ToListAsync();
+        return View(reviews);
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetReviewVisibility(int id, bool hide)
+    {
+        var review = await db.Reviews.FirstOrDefaultAsync(r => r.Id == id);
+        if (review is null) return NotFound();
+        review.IsHidden = hide;
+        await db.SaveChangesAsync();
+        var average = await db.Reviews.Where(r => r.DocumentId == review.DocumentId && !r.IsHidden)
+            .Select(r => (double?)r.Rating).AverageAsync() ?? 0;
+        var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == review.DocumentId);
+        if (document is not null) { document.Rating = average; await db.SaveChangesAsync(); }
+        TempData["ReviewAdminNotice"] = hide ? "Đã ẩn nhận xét khỏi trang tài liệu." : "Đã hiện nhận xét trên trang tài liệu.";
+        return RedirectToAction(nameof(ReviewModeration));
     }
 
     [Authorize]
@@ -136,6 +170,8 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     public async Task<IActionResult> Reports()
     {
         var reports = await db.DocumentReports.AsNoTracking()
+            .OrderBy(report => report.Status == "Pending" ? 0 : 1)
+            .ThenByDescending(report => report.CreatedAt).Take(200)
             .Join(db.Documents, report => report.DocumentId, document => document.Id,
                 (report, document) => new { report, document.Title })
             .Join(db.Users, item => item.report.UserId, user => user.Id,
@@ -143,9 +179,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
                     item.report.Reason, item.report.Details, item.report.Status, item.report.CreatedAt,
                     db.Users.Where(resolver => resolver.Id == item.report.ResolvedByUserId)
                         .Select(resolver => resolver.DisplayName).FirstOrDefault()))
-            .OrderBy(report => report.Status == "Pending" ? 0 : 1)
-            .ThenByDescending(report => report.CreatedAt)
-            .Take(200).ToListAsync();
+            .ToListAsync();
         return View(reports);
     }
 

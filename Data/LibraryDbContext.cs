@@ -47,6 +47,7 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
             entity.HasKey(r => r.Id);
             entity.HasIndex(r => new { r.UserId, r.DocumentId }).IsUnique();
             entity.Property(r => r.Comment).HasMaxLength(1000).IsRequired();
+            entity.Property(r => r.IsHidden).HasDefaultValue(false);
             entity.HasIndex(r => r.DocumentId);
         });
         modelBuilder.Entity<ReadingHistory>(entity =>

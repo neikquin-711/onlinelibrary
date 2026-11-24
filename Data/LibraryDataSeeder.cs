@@ -14,6 +14,7 @@ public static class LibraryDataSeeder
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'StoredFileName') IS NULL ALTER TABLE [Documents] ADD [StoredFileName] nvarchar(80) NULL;");
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'FileMimeType') IS NULL ALTER TABLE [Documents] ADD [FileMimeType] nvarchar(100) NULL;");
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'FileSizeBytes') IS NULL ALTER TABLE [Documents] ADD [FileSizeBytes] bigint NULL;");
+            await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Reviews', 'IsHidden') IS NULL ALTER TABLE [Reviews] ADD [IsHidden] bit NOT NULL CONSTRAINT [DF_Reviews_IsHidden] DEFAULT 0;");
             await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.Favorites', N'U') IS NULL CREATE TABLE [dbo].[Favorites] ([UserId] int NOT NULL, [DocumentId] int NOT NULL, [CreatedAt] datetime2 NOT NULL CONSTRAINT [DF_Favorites_CreatedAt] DEFAULT SYSUTCDATETIME(), CONSTRAINT [PK_Favorites] PRIMARY KEY ([UserId], [DocumentId]), CONSTRAINT [FK_Favorites_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_Favorites_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
             await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Favorites_DocumentId' AND object_id = OBJECT_ID(N'dbo.Favorites')) CREATE INDEX [IX_Favorites_DocumentId] ON [dbo].[Favorites] ([DocumentId]);");
             await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.Reviews', N'U') IS NULL CREATE TABLE [dbo].[Reviews] ([Id] int IDENTITY(1,1) NOT NULL, [UserId] int NOT NULL, [DocumentId] int NOT NULL, [Rating] int NOT NULL, [Comment] nvarchar(1000) NOT NULL, [CreatedAt] datetime2 NOT NULL, [UpdatedAt] datetime2 NOT NULL, CONSTRAINT [PK_Reviews] PRIMARY KEY ([Id]), CONSTRAINT [FK_Reviews_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_Reviews_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
@@ -30,6 +31,7 @@ public static class LibraryDataSeeder
         }
         else if (db.Database.IsSqlite())
         {
+            await EnsureSqliteReviewHiddenColumnAsync(db);
             await db.Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS \"DocumentReports\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_DocumentReports\" PRIMARY KEY AUTOINCREMENT, \"UserId\" INTEGER NOT NULL, \"DocumentId\" INTEGER NOT NULL, \"Reason\" TEXT NOT NULL, \"Details\" TEXT NOT NULL, \"Status\" TEXT NOT NULL, \"CreatedAt\" TEXT NOT NULL, \"ResolvedAt\" TEXT NULL, \"ResolvedByUserId\" INTEGER NULL, CONSTRAINT \"FK_DocumentReports_Users\" FOREIGN KEY (\"UserId\") REFERENCES \"Users\" (\"Id\") ON DELETE CASCADE, CONSTRAINT \"FK_DocumentReports_Documents\" FOREIGN KEY (\"DocumentId\") REFERENCES \"Documents\" (\"Id\") ON DELETE CASCADE);");
             await db.Database.ExecuteSqlRawAsync("CREATE INDEX IF NOT EXISTS \"IX_DocumentReports_Status_CreatedAt\" ON \"DocumentReports\" (\"Status\", \"CreatedAt\");");
             await db.Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS \"DocumentDownloads\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_DocumentDownloads\" PRIMARY KEY AUTOINCREMENT, \"UserId\" INTEGER NOT NULL, \"DocumentId\" INTEGER NOT NULL, \"DownloadedAt\" TEXT NOT NULL, CONSTRAINT \"FK_DocumentDownloads_Users\" FOREIGN KEY (\"UserId\") REFERENCES \"Users\" (\"Id\") ON DELETE CASCADE, CONSTRAINT \"FK_DocumentDownloads_Documents\" FOREIGN KEY (\"DocumentId\") REFERENCES \"Documents\" (\"Id\") ON DELETE CASCADE);");
@@ -59,5 +61,23 @@ public static class LibraryDataSeeder
             db.Users.Add(admin);
             await db.SaveChangesAsync();
         }
+    }
+
+    private static async Task EnsureSqliteReviewHiddenColumnAsync(LibraryDbContext db)
+    {
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            var connection = db.Database.GetDbConnection();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA table_info(\"Reviews\")";
+            await using var reader = await command.ExecuteReaderAsync();
+            var exists = false;
+            while (await reader.ReadAsync())
+                if (reader.GetString(1).Equals("IsHidden", StringComparison.OrdinalIgnoreCase)) { exists = true; break; }
+            await reader.CloseAsync();
+            if (!exists) await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"Reviews\" ADD COLUMN \"IsHidden\" INTEGER NOT NULL DEFAULT 0;");
+        }
+        finally { await db.Database.CloseConnectionAsync(); }
     }
 }
