@@ -34,9 +34,10 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         var document = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
         if (document is null) return NotFound();
         ViewBag.Reviews = await db.Reviews.AsNoTracking().Where(r => r.DocumentId == id)
+            .OrderByDescending(r => r.UpdatedAt).Take(50)
             .Join(db.Users, review => review.UserId, user => user.Id,
                 (review, user) => new ReviewCard(user.DisplayName, review.Rating, review.Comment, review.UpdatedAt))
-            .OrderByDescending(review => review.UpdatedAt).Take(50).ToListAsync();
+            .ToListAsync();
         var reviewCount = await db.Reviews.CountAsync(r => r.DocumentId == id);
         ViewBag.ReviewCount = reviewCount;
         ViewBag.AverageRating = reviewCount == 0 ? document.Rating : await db.Reviews.Where(r => r.DocumentId == id).AverageAsync(r => (double)r.Rating);
@@ -102,6 +103,71 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         db.Entry(document).Property(d => d.Rating).CurrentValue = average;
         await db.SaveChangesAsync();
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [Authorize]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SubmitReport(int id, string? reason, string? details)
+    {
+        var allowedReasons = new[] { "Tệp bị lỗi", "Thông tin chưa chính xác", "Nội dung vi phạm", "Khác" };
+        if (reason is null || !allowedReasons.Contains(reason) || string.IsNullOrWhiteSpace(details) || details.Trim().Length > 1000)
+        {
+            TempData["ReportError"] = "Chọn lý do và mô tả vấn đề (tối đa 1.000 ký tự).";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+        if (!await db.Documents.AnyAsync(d => d.Id == id)) return NotFound();
+        var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (await db.DocumentReports.AnyAsync(r => r.UserId == userId && r.DocumentId == id && r.Status == "Pending"))
+        {
+            TempData["ReportError"] = "Bạn đã gửi báo cáo đang chờ xử lý cho tài liệu này.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+        db.DocumentReports.Add(new DocumentReport
+        {
+            UserId = userId, DocumentId = id, Reason = reason, Details = details.Trim(), Status = "Pending"
+        });
+        await db.SaveChangesAsync();
+        TempData["ReportNotice"] = "Cảm ơn bạn. Báo cáo đã được gửi đến thủ thư.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
+    public async Task<IActionResult> Reports()
+    {
+        var reports = await db.DocumentReports.AsNoTracking()
+            .Join(db.Documents, report => report.DocumentId, document => document.Id,
+                (report, document) => new { report, document.Title })
+            .Join(db.Users, item => item.report.UserId, user => user.Id,
+                (item, user) => new DocumentReportRow(item.report.Id, item.report.DocumentId, item.Title, user.DisplayName,
+                    item.report.Reason, item.report.Details, item.report.Status, item.report.CreatedAt,
+                    db.Users.Where(resolver => resolver.Id == item.report.ResolvedByUserId)
+                        .Select(resolver => resolver.DisplayName).FirstOrDefault()))
+            .OrderBy(report => report.Status == "Pending" ? 0 : 1)
+            .ThenByDescending(report => report.CreatedAt)
+            .Take(200).ToListAsync();
+        return View(reports);
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResolveReport(int reportId, string? decision)
+    {
+        if (decision is not ("Resolved" or "Rejected")) return BadRequest();
+        var report = await db.DocumentReports.FirstOrDefaultAsync(r => r.Id == reportId);
+        if (report is null) return NotFound();
+        if (report.Status != "Pending")
+        {
+            TempData["ReportAdminError"] = "Báo cáo này đã được xử lý trước đó.";
+            return RedirectToAction(nameof(Reports));
+        }
+        report.Status = decision;
+        report.ResolvedAt = DateTime.UtcNow;
+        report.ResolvedByUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        await db.SaveChangesAsync();
+        TempData["ReportAdminNotice"] = "Đã cập nhật trạng thái báo cáo.";
+        return RedirectToAction(nameof(Reports));
     }
 
     [Authorize]

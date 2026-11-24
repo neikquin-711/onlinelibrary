@@ -31,10 +31,11 @@ Khóa cookie và anti-forgery được lưu trong `App_Data/data-protection-keys
 - `/Home/Create` — thêm tài liệu; biểu mẫu POST có anti-forgery token (Admin/Thủ thư).
 - `/Home/Edit/1` — sửa metadata hoặc thay tệp có quét bảo mật (Admin/Thủ thư).
 - `/Home/Users` — quản lý vai trò độc giả và thủ thư (Admin).
+- `/Home/Reports` — hàng đợi báo cáo tài liệu (Admin/Thủ thư).
 - `/Home/DocumentFile/1` — xem/tải tệp qua controller; không lộ đường dẫn lưu trữ.
 - `/Home/MyLibrary` — danh sách yêu thích và lịch sử đọc của tài khoản (đăng nhập).
 - `/Account/Register` và `/Account/Login` — tài khoản độc giả.
 
 ## Trạng thái dữ liệu
 
-Dữ liệu danh mục, tài khoản, yêu thích, đánh giá và lịch sử đọc lưu trong cơ sở dữ liệu. Độc giả đã đăng nhập có thể lưu/xóa yêu thích, gửi đánh giá (mỗi người một đánh giá cho mỗi tài liệu, có thể sửa bằng cách gửi lại), và xem lịch sử đọc. Tải lên PDF, EPUB và DOCX đã được nối vào luồng tạo tài liệu; PDF mở bằng trình xem tích hợp của trình duyệt, EPUB/DOCX được tải về. Phân quyền dùng cookie authentication với các vai trò Admin, Librarian và Reader. Admin có thể cấp hoặc thu hồi vai trò Thủ thư trong trang Người dùng; tài khoản Admin không thể bị đổi vai trò tại trang này.
+Dữ liệu danh mục, tài khoản, yêu thích, đánh giá, lịch sử đọc và báo cáo lưu trong cơ sở dữ liệu. Độc giả đã đăng nhập có thể lưu/xóa yêu thích, gửi đánh giá (mỗi người một đánh giá cho mỗi tài liệu, có thể sửa bằng cách gửi lại), xem lịch sử đọc và báo cáo tài liệu. Admin/Thủ thư có thể xử lý hoặc từ chối báo cáo. Tải lên PDF, EPUB và DOCX đã được nối vào luồng tạo tài liệu; PDF mở bằng trình xem tích hợp của trình duyệt, EPUB/DOCX được tải về. Phân quyền dùng cookie authentication với các vai trò Admin, Librarian và Reader. Admin có thể cấp hoặc thu hồi vai trò Thủ thư trong trang Người dùng; tài khoản Admin không thể bị đổi vai trò tại trang này.

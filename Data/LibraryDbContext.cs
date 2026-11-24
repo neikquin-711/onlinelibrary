@@ -10,6 +10,7 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
     public DbSet<LibraryFavorite> Favorites => Set<LibraryFavorite>();
     public DbSet<LibraryReview> Reviews => Set<LibraryReview>();
     public DbSet<ReadingHistory> ReadingHistory => Set<ReadingHistory>();
+    public DbSet<DocumentReport> DocumentReports => Set<DocumentReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +53,16 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
             entity.HasKey(h => h.Id);
             entity.HasIndex(h => new { h.UserId, h.DocumentId }).IsUnique();
             entity.HasIndex(h => new { h.UserId, h.LastReadAt });
+        });
+        modelBuilder.Entity<DocumentReport>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Reason).HasMaxLength(50).IsRequired();
+            entity.Property(r => r.Details).HasMaxLength(1000).IsRequired();
+            entity.Property(r => r.Status).HasMaxLength(20).IsRequired();
+            entity.HasIndex(r => new { r.Status, r.CreatedAt });
+            entity.HasOne<LibraryUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<LibraryDocument>().WithMany().HasForeignKey(r => r.DocumentId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
