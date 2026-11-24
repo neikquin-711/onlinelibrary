@@ -1,0 +1,20 @@
+@model LibraryUser
+@{ ViewData["Title"] = "Hồ sơ cá nhân"; }
+<section class="profile-page wrap">
+    <div class="eyebrow"><span class="eyebrow-line"></span> TÀI KHOẢN CỦA BẠN</div>
+    <h1>Hồ sơ <em>độc giả.</em></h1>
+    <p class="catalog-intro">Cập nhật thông tin đăng nhập và tên hiển thị của bạn.</p>
+    <div class="profile-card">
+        @if (ViewBag.Error is not null){<div class="form-error">@ViewBag.Error</div>}
+        @if (TempData["ProfileSaved"] is not null){<div class="profile-success" role="status">@TempData["ProfileSaved"]</div>}
+        <form asp-action="Profile" method="post" class="document-form">
+            <div class="form-field wide"><label for="displayName">Tên hiển thị</label><input id="displayName" name="displayName" value="@Model.DisplayName" maxlength="80" required /></div>
+            <div class="form-field wide"><label for="email">Địa chỉ email</label><input id="email" name="email" type="email" value="@Model.Email" maxlength="254" required /></div>
+            <div class="form-field wide"><label for="currentPassword">Mật khẩu hiện tại <span class="field-hint">Bắt buộc để lưu thay đổi</span></label><input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" required /></div>
+            <div class="profile-divider wide"><strong>Đổi mật khẩu</strong><span>Để trống nếu bạn muốn giữ mật khẩu hiện tại.</span></div>
+            <div class="form-field"><label for="newPassword">Mật khẩu mới</label><input id="newPassword" name="newPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" /></div>
+            <div class="form-field"><label for="confirmPassword">Xác nhận mật khẩu mới</label><input id="confirmPassword" name="confirmPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" /></div>
+            <div class="form-actions"><a class="outline-button" asp-controller="Home" asp-action="Index">Hủy</a><button class="primary-button" type="submit">Lưu hồ sơ <span>→</span></button></div>
+        </form>
+    </div>
+</section>

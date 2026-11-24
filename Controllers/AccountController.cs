@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -75,6 +76,58 @@ public class AccountController(LibraryDbContext db, IPasswordHasher<LibraryUser>
     }
 
     public IActionResult AccessDenied() => View();
+
+    [Authorize]
+    [HttpGet]
+    public async Task<IActionResult> Profile()
+    {
+        if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)) return Challenge();
+        var user = await db.Users.FindAsync(userId);
+        return user is null ? NotFound() : View(user);
+    }
+
+    [Authorize]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Profile(string? displayName, string? email, string? currentPassword,
+        string? newPassword, string? confirmPassword)
+    {
+        if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)) return Challenge();
+        var user = await db.Users.FindAsync(userId);
+        if (user is null) return NotFound();
+
+        var normalizedEmail = email?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(displayName) || displayName.Trim().Length > 80 || normalizedEmail is null ||
+            normalizedEmail.Length > 254 || !Regex.IsMatch(normalizedEmail, @"^[^\s@]+@[^\s@]+\.[^\s@]+$") ||
+            string.IsNullOrWhiteSpace(currentPassword) ||
+            passwordHasher.VerifyHashedPassword(user, user.PasswordHash, currentPassword) == PasswordVerificationResult.Failed)
+        {
+            ViewBag.Error = "Hãy nhập tên, email hợp lệ và mật khẩu hiện tại chính xác.";
+            return View(user);
+        }
+        if (await db.Users.AnyAsync(u => u.Id != userId && u.Email == normalizedEmail))
+        {
+            ViewBag.Error = "Email này đã được tài khoản khác sử dụng.";
+            return View(user);
+        }
+        if (!string.IsNullOrEmpty(newPassword))
+        {
+            if (newPassword.Length is < 10 or > 128 || !newPassword.Any(char.IsUpper) ||
+                !newPassword.Any(char.IsLower) || !newPassword.Any(char.IsDigit) || newPassword != confirmPassword)
+            {
+                ViewBag.Error = "Mật khẩu mới phải khớp xác nhận, dài 10–128 ký tự và có chữ hoa, chữ thường, chữ số.";
+                return View(user);
+            }
+            user.PasswordHash = passwordHasher.HashPassword(user, newPassword);
+        }
+
+        user.DisplayName = displayName.Trim();
+        user.Email = normalizedEmail;
+        await db.SaveChangesAsync();
+        await SignIn(user, rememberMe: false);
+        TempData["ProfileSaved"] = "Thông tin hồ sơ đã được cập nhật.";
+        return RedirectToAction(nameof(Profile));
+    }
 
     private async Task SignIn(LibraryUser user, bool rememberMe)
     {
