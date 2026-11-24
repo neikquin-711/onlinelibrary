@@ -7,7 +7,8 @@ Website thư viện trực tuyến xây dựng bằng ASP.NET Core MVC (.NET 9),
 ## Chạy ứng dụng
 
 ```powershell
-dotnet run
+
+
 ```
 
 Mở địa chỉ localhost được hiển thị trong terminal.
@@ -28,6 +29,7 @@ Khóa cookie và anti-forgery được lưu trong `App_Data/data-protection-keys
 - `/Home/Read/1` — giao diện đọc mẫu.
 - `/Home/Admin` — bảng quản lý tài liệu (Admin/Thủ thư).
 - `/Home/Create` — thêm tài liệu; biểu mẫu POST có anti-forgery token (Admin/Thủ thư).
+- `/Home/Edit/1` — sửa metadata hoặc thay tệp có quét bảo mật (Admin/Thủ thư).
 - `/Home/DocumentFile/1` — xem/tải tệp qua controller; không lộ đường dẫn lưu trữ.
 - `/Home/MyLibrary` — danh sách yêu thích và lịch sử đọc của tài khoản (đăng nhập).
 - `/Account/Register` và `/Account/Login` — tài khoản độc giả.

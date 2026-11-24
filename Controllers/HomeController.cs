@@ -148,6 +148,93 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     public IActionResult Create() => View();
 
     [Authorize(Roles = "Admin,Librarian")]
+    [HttpGet]
+    public async Task<IActionResult> Edit(int id)
+    {
+        var document = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+        return document is null ? NotFound() : View(document);
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Edit(int id, string? title, string? author, string? category, int year,
+        string? format, string? description, IFormFile? file)
+    {
+        var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == id);
+        if (document is null) return NotFound();
+        var categories = new[] { "Văn học", "Tâm lý học", "Kỹ năng sống", "Lịch sử" };
+        var formats = new[] { "PDF", "EPUB", "DOCX" };
+        if (string.IsNullOrWhiteSpace(title) || title.Length > 120 || string.IsNullOrWhiteSpace(author) || author.Length > 100 ||
+            category is null || !categories.Contains(category) || year < 1000 || year > DateTime.UtcNow.Year ||
+            format is null || !formats.Contains(format) || string.IsNullOrWhiteSpace(description) || description.Length > 1000 ||
+            (file is not null && file.Length is <= 0 or > MaxUploadBytes) ||
+            (file is null && document.StoredFileName is not null && document.Format != format))
+        {
+            ViewBag.Error = "Kiểm tra các trường bắt buộc, năm xuất bản và tệp (tối đa 25 MB). Nếu đổi định dạng, hãy tải lên tệp thay thế.";
+            return View(document);
+        }
+
+        string? newFileName = null;
+        string? temporaryPath = null;
+        string? newFilePath = null;
+        var previousFileName = document.StoredFileName;
+        try
+        {
+            if (file is not null)
+            {
+                var (mimeType, extension) = GetFileMetadata(format!);
+                if (!string.Equals(Path.GetExtension(file.FileName), extension, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Phần mở rộng tệp không khớp với định dạng đã chọn.");
+                if (!string.Equals(file.ContentType, mimeType, StringComparison.OrdinalIgnoreCase) &&
+                    !(format == "EPUB" && file.ContentType == "application/octet-stream"))
+                    throw new InvalidDataException("Kiểu nội dung tệp không khớp với định dạng đã chọn.");
+                await ValidateDocumentFileAsync(file, format!);
+
+                Directory.CreateDirectory(DocumentStoragePath);
+                newFileName = $"{Guid.NewGuid():N}{extension}";
+                temporaryPath = Path.Combine(DocumentStoragePath, $"{Guid.NewGuid():N}.upload");
+                newFilePath = Path.Combine(DocumentStoragePath, newFileName);
+                await using (var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, useAsync: true))
+                    await file.CopyToAsync(output, HttpContext.RequestAborted);
+                await scanner.ScanAsync(temporaryPath, HttpContext.RequestAborted);
+                System.IO.File.Move(temporaryPath, newFilePath);
+                temporaryPath = null;
+                document.StoredFileName = newFileName;
+                document.FileMimeType = mimeType;
+                document.FileSizeBytes = file.Length;
+            }
+
+            document.Title = title.Trim();
+            document.Author = author.Trim();
+            document.Category = category!;
+            document.Year = year;
+            document.Format = format!;
+            document.Initials = new string(title.Trim().Take(2).ToArray()).ToUpperInvariant();
+            document.Description = description.Trim();
+            await db.SaveChangesAsync();
+
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or TimeoutException or IOException or DbUpdateException)
+        {
+            if (temporaryPath is not null && System.IO.File.Exists(temporaryPath)) System.IO.File.Delete(temporaryPath);
+            if (newFilePath is not null && System.IO.File.Exists(newFilePath)) System.IO.File.Delete(newFilePath);
+            await db.Entry(document).ReloadAsync();
+            ViewBag.Error = ex is InvalidDataException ? ex.Message : ex is TimeoutException
+                ? "Quét bảo mật quá thời gian. Tài liệu chưa được cập nhật."
+                : ex is InvalidOperationException ? ex.Message : "Không thể cập nhật tài liệu. Kiểm tra cấu hình quét virus và dung lượng lưu trữ.";
+            return View(document);
+        }
+        if (newFileName is not null && previousFileName is not null && Path.GetFileName(previousFileName) == previousFileName)
+        {
+            var oldPath = Path.Combine(DocumentStoragePath, previousFileName);
+            try { if (System.IO.File.Exists(oldPath)) System.IO.File.Delete(oldPath); }
+            catch (IOException) { /* The update is committed; keep the orphaned old file for manual cleanup. */ }
+        }
+        return RedirectToAction(nameof(Admin));
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(string? title, string? author, string? category, int year, string? format, string? description, IFormFile? file)
@@ -266,4 +353,12 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             throw new InvalidDataException("Tệp nén bị hỏng hoặc không đúng định dạng.");
         }
     }
+
+    private static (string MimeType, string Extension) GetFileMetadata(string format) => format switch
+    {
+        "PDF" => ("application/pdf", ".pdf"),
+        "EPUB" => ("application/epub+zip", ".epub"),
+        "DOCX" => ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"),
+        _ => throw new InvalidDataException("Định dạng tệp không được hỗ trợ.")
+    };
 }
