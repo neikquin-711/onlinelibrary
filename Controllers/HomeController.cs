@@ -20,7 +20,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         return View(await db.Documents.AsNoTracking().OrderByDescending(d => d.Reads).ToListAsync());
     }
 
-    public async Task<IActionResult> Catalog(string? q, string? category, string? sort = "popular", int page = 1)
+    public async Task<IActionResult> Catalog(string? q, string? category, string? author, int? yearFrom, int? yearTo, string? sort = "popular", int page = 1)
     {
         var query = db.Documents.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
@@ -29,6 +29,9 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             query = query.Where(d => d.Title.Contains(term) || d.Author.Contains(term) || d.Category.Contains(term));
         }
         if (!string.IsNullOrWhiteSpace(category) && category != "Tất cả") query = query.Where(d => d.Category == category);
+        if (!string.IsNullOrWhiteSpace(author)) query = query.Where(d => d.Author == author);
+        if (yearFrom.HasValue) query = query.Where(d => d.Year >= yearFrom.Value);
+        if (yearTo.HasValue) query = query.Where(d => d.Year <= yearTo.Value);
         query = sort switch { "newest" => query.OrderByDescending(d => d.Year), "rating" => query.OrderByDescending(d => d.Rating), _ => query.OrderByDescending(d => d.Reads) };
         const int pageSize = 12;
         var total = await query.CountAsync();
@@ -37,7 +40,9 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         var documents = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         ViewBag.Categories = await db.LibraryReferences.AsNoTracking().Where(r => r.Type == "Category" && r.IsActive)
             .OrderBy(r => r.Name).Select(r => r.Name).ToListAsync();
-        return View(new CatalogViewModel(documents, q, category ?? "Tất cả", sort ?? "popular", page, totalPages, total));
+        ViewBag.Authors = await db.LibraryReferences.AsNoTracking().Where(r => r.Type == "Author" && r.IsActive)
+            .OrderBy(r => r.Name).Select(r => r.Name).ToListAsync();
+        return View(new CatalogViewModel(documents, q, category ?? "Tất cả", sort ?? "popular", page, totalPages, total, author, yearFrom, yearTo));
     }
 
     public async Task<IActionResult> Details(int id)
