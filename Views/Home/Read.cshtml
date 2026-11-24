@@ -1,3 +1,48 @@
 @model LibraryDocument
-@{ ViewData["Title"] = "Đang đọc · " + Model.Title; }
-<section class="reader-page"><div class="reader-toolbar"><a asp-action="Details" asp-route-id="@Model.Id" class="reader-back">← <span>Quay lại</span></a><div class="reader-book-name"><strong>@Model.Title</strong><span>@Model.Author</span></div><div class="reader-controls">@if(Model.Format == "PDF" && Model.StoredFileName is not null){<a class="reader-download" asp-action="DocumentFile" asp-route-id="@Model.Id" asp-route-download="true">Tải xuống ↓</a>}</div></div>@if(Model.StoredFileName is null){<div class="reader-empty"><h1>Chưa có tệp để đọc</h1><p>Tài liệu này mới có thông tin giới thiệu.</p></div>}else if(Model.Format == "PDF"){<iframe class="pdf-reader" title="Đọc @Model.Title" src="@Url.Action("DocumentFile", "Home", new { id = Model.Id })"></iframe>}else if(Model.Format == "EPUB"){<div class="reader-empty"><h1>Tệp EPUB sẵn sàng</h1><p>Tải tệp về để mở bằng ứng dụng đọc EPUB trên thiết bị của bạn.</p><a class="primary-button" asp-action="DocumentFile" asp-route-id="@Model.Id" asp-route-download="true">Tải EPUB <span>↓</span></a></div>}else{<div class="reader-empty"><h1>Tệp DOCX sẵn sàng</h1><p>Tải tệp về để mở bằng trình đọc DOCX trên thiết bị của bạn.</p><a class="primary-button" asp-action="DocumentFile" asp-route-id="@Model.Id" asp-route-download="true">Tải DOCX <span>↓</span></a></div>}</section>
+@{
+    ViewData["Title"] = "Đang đọc · " + Model.Title;
+    var fileUrl = Url.Action("DocumentFile", "Home", new { id = Model.Id });
+}
+<section class="reader-page">
+    <div class="reader-toolbar">
+        <a asp-action="Details" asp-route-id="@Model.Id" class="reader-back">← <span>Quay lại</span></a>
+        <div class="reader-book-name"><strong>@Model.Title</strong><span>@Model.Author</span></div>
+        <div class="reader-controls">
+            @if (Model.StoredFileName is not null)
+            {
+                @if (Model.Format == "EPUB")
+                {
+                    <button type="button" id="epub-prev" aria-label="Trang trước">←</button>
+                    <button type="button" id="epub-next" aria-label="Trang sau">→</button>
+                }
+                <a class="reader-download" asp-action="DocumentFile" asp-route-id="@Model.Id" asp-route-download="true">Tải xuống ↓</a>
+            }
+        </div>
+    </div>
+    @if (Model.StoredFileName is null)
+    {
+        <div class="reader-empty"><h1>Chưa có tệp để đọc</h1><p>Tài liệu này mới có thông tin giới thiệu.</p></div>
+    }
+    else if (Model.Format == "PDF")
+    {
+        <iframe class="pdf-reader" title="Đọc @Model.Title" src="@fileUrl"></iframe>
+    }
+    else if (Model.Format == "EPUB")
+    {
+        <div id="epub-status" class="reader-empty" role="status">Đang mở sách EPUB…</div>
+        <div id="epub-reader" class="epub-reader" data-book-url="@fileUrl" aria-label="Trình đọc EPUB"></div>
+        <div id="epub-error" class="reader-empty" role="alert" hidden><h1>Không thể mở EPUB</h1><p>Hãy kiểm tra kết nối rồi thử lại, hoặc tải tệp về thiết bị.</p></div>
+    }
+    else
+    {
+        <div class="reader-empty"><h1>Tệp DOCX sẵn sàng</h1><p>Tải tệp về để mở bằng trình đọc DOCX trên thiết bị của bạn.</p><a class="primary-button" asp-action="DocumentFile" asp-route-id="@Model.Id" asp-route-download="true">Tải DOCX <span>↓</span></a></div>
+    }
+</section>
+@if (Model.Format == "EPUB" && Model.StoredFileName is not null)
+{
+    @section Scripts {
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
+        <script src="~/js/epub-reader.js" asp-append-version="true"></script>
+    }
+}
