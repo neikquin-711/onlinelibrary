@@ -14,6 +14,7 @@ public static class LibraryDataSeeder
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'StoredFileName') IS NULL ALTER TABLE [Documents] ADD [StoredFileName] nvarchar(80) NULL;");
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'FileMimeType') IS NULL ALTER TABLE [Documents] ADD [FileMimeType] nvarchar(100) NULL;");
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'FileSizeBytes') IS NULL ALTER TABLE [Documents] ADD [FileSizeBytes] bigint NULL;");
+            await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'Publisher') IS NULL ALTER TABLE [Documents] ADD [Publisher] nvarchar(120) NOT NULL CONSTRAINT [DF_Documents_Publisher] DEFAULT N'';");
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Reviews', 'IsHidden') IS NULL ALTER TABLE [Reviews] ADD [IsHidden] bit NOT NULL CONSTRAINT [DF_Reviews_IsHidden] DEFAULT 0;");
             await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.Favorites', N'U') IS NULL CREATE TABLE [dbo].[Favorites] ([UserId] int NOT NULL, [DocumentId] int NOT NULL, [CreatedAt] datetime2 NOT NULL CONSTRAINT [DF_Favorites_CreatedAt] DEFAULT SYSUTCDATETIME(), CONSTRAINT [PK_Favorites] PRIMARY KEY ([UserId], [DocumentId]), CONSTRAINT [FK_Favorites_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_Favorites_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
             await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Favorites_DocumentId' AND object_id = OBJECT_ID(N'dbo.Favorites')) CREATE INDEX [IX_Favorites_DocumentId] ON [dbo].[Favorites] ([DocumentId]);");
@@ -28,15 +29,20 @@ public static class LibraryDataSeeder
             await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.DocumentDownloads', N'U') IS NULL CREATE TABLE [dbo].[DocumentDownloads] ([Id] int IDENTITY(1,1) NOT NULL, [UserId] int NOT NULL, [DocumentId] int NOT NULL, [DownloadedAt] datetime2 NOT NULL, CONSTRAINT [PK_DocumentDownloads] PRIMARY KEY ([Id]), CONSTRAINT [FK_DocumentDownloads_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_DocumentDownloads_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
             await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_DocumentDownloads_UserId_DownloadedAt' AND object_id = OBJECT_ID(N'dbo.DocumentDownloads')) CREATE INDEX [IX_DocumentDownloads_UserId_DownloadedAt] ON [dbo].[DocumentDownloads] ([UserId], [DownloadedAt]);");
             await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_DocumentDownloads_DocumentId' AND object_id = OBJECT_ID(N'dbo.DocumentDownloads')) CREATE INDEX [IX_DocumentDownloads_DocumentId] ON [dbo].[DocumentDownloads] ([DocumentId]);");
+            await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.LibraryReferences', N'U') IS NULL CREATE TABLE [dbo].[LibraryReferences] ([Id] int IDENTITY(1,1) NOT NULL, [Type] nvarchar(20) NOT NULL, [Name] nvarchar(120) NOT NULL, [Description] nvarchar(500) NOT NULL, [IsActive] bit NOT NULL, CONSTRAINT [PK_LibraryReferences] PRIMARY KEY ([Id]));");
+            await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LibraryReferences_Type_Name' AND object_id = OBJECT_ID(N'dbo.LibraryReferences')) CREATE UNIQUE INDEX [IX_LibraryReferences_Type_Name] ON [dbo].[LibraryReferences] ([Type], [Name]);");
         }
         else if (db.Database.IsSqlite())
         {
+            await EnsureSqlitePublisherColumnAsync(db);
             await EnsureSqliteReviewHiddenColumnAsync(db);
             await db.Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS \"DocumentReports\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_DocumentReports\" PRIMARY KEY AUTOINCREMENT, \"UserId\" INTEGER NOT NULL, \"DocumentId\" INTEGER NOT NULL, \"Reason\" TEXT NOT NULL, \"Details\" TEXT NOT NULL, \"Status\" TEXT NOT NULL, \"CreatedAt\" TEXT NOT NULL, \"ResolvedAt\" TEXT NULL, \"ResolvedByUserId\" INTEGER NULL, CONSTRAINT \"FK_DocumentReports_Users\" FOREIGN KEY (\"UserId\") REFERENCES \"Users\" (\"Id\") ON DELETE CASCADE, CONSTRAINT \"FK_DocumentReports_Documents\" FOREIGN KEY (\"DocumentId\") REFERENCES \"Documents\" (\"Id\") ON DELETE CASCADE);");
             await db.Database.ExecuteSqlRawAsync("CREATE INDEX IF NOT EXISTS \"IX_DocumentReports_Status_CreatedAt\" ON \"DocumentReports\" (\"Status\", \"CreatedAt\");");
             await db.Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS \"DocumentDownloads\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_DocumentDownloads\" PRIMARY KEY AUTOINCREMENT, \"UserId\" INTEGER NOT NULL, \"DocumentId\" INTEGER NOT NULL, \"DownloadedAt\" TEXT NOT NULL, CONSTRAINT \"FK_DocumentDownloads_Users\" FOREIGN KEY (\"UserId\") REFERENCES \"Users\" (\"Id\") ON DELETE CASCADE, CONSTRAINT \"FK_DocumentDownloads_Documents\" FOREIGN KEY (\"DocumentId\") REFERENCES \"Documents\" (\"Id\") ON DELETE CASCADE);");
             await db.Database.ExecuteSqlRawAsync("CREATE INDEX IF NOT EXISTS \"IX_DocumentDownloads_UserId_DownloadedAt\" ON \"DocumentDownloads\" (\"UserId\", \"DownloadedAt\");");
             await db.Database.ExecuteSqlRawAsync("CREATE INDEX IF NOT EXISTS \"IX_DocumentDownloads_DocumentId\" ON \"DocumentDownloads\" (\"DocumentId\");");
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS \"LibraryReferences\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_LibraryReferences\" PRIMARY KEY AUTOINCREMENT, \"Type\" TEXT NOT NULL, \"Name\" TEXT NOT NULL, \"Description\" TEXT NOT NULL, \"IsActive\" INTEGER NOT NULL);");
+            await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IF NOT EXISTS \"IX_LibraryReferences_Type_Name\" ON \"LibraryReferences\" (\"Type\", \"Name\");");
         }
         if (!await db.Documents.AnyAsync())
         {
@@ -52,6 +58,21 @@ public static class LibraryDataSeeder
             await db.SaveChangesAsync();
         }
 
+        var documentsMissingPublisher = await db.Documents.Where(d => d.Publisher == "").ToListAsync();
+        foreach (var document in documentsMissingPublisher) document.Publisher = "Chưa cập nhật";
+        if (documentsMissingPublisher.Count > 0) await db.SaveChangesAsync();
+        var referenceValues = await db.Documents.Select(d => new { d.Category, d.Author, d.Publisher }).ToListAsync();
+        var references = referenceValues.SelectMany(value => new[]
+        {
+            new LibraryReference { Type = "Category", Name = value.Category },
+            new LibraryReference { Type = "Author", Name = value.Author },
+            new LibraryReference { Type = "Publisher", Name = value.Publisher }
+        }).GroupBy(reference => new { reference.Type, reference.Name }).Select(group => group.First()).ToList();
+        foreach (var reference in references)
+            if (!await db.LibraryReferences.AnyAsync(existing => existing.Type == reference.Type && existing.Name == reference.Name))
+                db.LibraryReferences.Add(reference);
+        await db.SaveChangesAsync();
+
         var adminEmail = configuration["ONLIBRARY_ADMIN_EMAIL"]?.Trim().ToLowerInvariant();
         var adminPassword = configuration["ONLIBRARY_ADMIN_PASSWORD"];
         if (!string.IsNullOrWhiteSpace(adminEmail) && !string.IsNullOrWhiteSpace(adminPassword) && !await db.Users.AnyAsync(u => u.Email == adminEmail))
@@ -61,6 +82,24 @@ public static class LibraryDataSeeder
             db.Users.Add(admin);
             await db.SaveChangesAsync();
         }
+    }
+
+    private static async Task EnsureSqlitePublisherColumnAsync(LibraryDbContext db)
+    {
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            var connection = db.Database.GetDbConnection();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA table_info(\"Documents\")";
+            await using var reader = await command.ExecuteReaderAsync();
+            var exists = false;
+            while (await reader.ReadAsync())
+                if (reader.GetString(1).Equals("Publisher", StringComparison.OrdinalIgnoreCase)) { exists = true; break; }
+            await reader.CloseAsync();
+            if (!exists) await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"Documents\" ADD COLUMN \"Publisher\" TEXT NOT NULL DEFAULT 'Chưa cập nhật';");
+        }
+        finally { await db.Database.CloseConnectionAsync(); }
     }
 
     private static async Task EnsureSqliteReviewHiddenColumnAsync(LibraryDbContext db)

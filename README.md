@@ -33,10 +33,11 @@ Khóa cookie và anti-forgery được lưu trong `App_Data/data-protection-keys
 - `/Home/Users` — quản lý vai trò độc giả và thủ thư (Admin).
 - `/Home/Reports` — hàng đợi báo cáo tài liệu (Admin/Thủ thư).
 - `/Home/ReviewModeration` — ẩn/hiện nhận xét (Admin/Thủ thư).
+- `/Home/References` — CRUD danh mục, tác giả và nhà xuất bản (Admin/Thủ thư).
 - `/Home/DocumentFile/1` — xem/tải tệp qua controller; không lộ đường dẫn lưu trữ.
 - `/Home/MyLibrary` — danh sách yêu thích và lịch sử đọc của tài khoản (đăng nhập).
 - `/Account/Register` và `/Account/Login` — tài khoản độc giả.
 
 ## Trạng thái dữ liệu
 
-Dữ liệu danh mục, tài khoản, yêu thích, đánh giá, lịch sử đọc, lịch sử tải xuống và báo cáo lưu trong cơ sở dữ liệu. Độc giả đã đăng nhập có thể lưu/xóa yêu thích, gửi đánh giá (mỗi người một đánh giá cho mỗi tài liệu, có thể sửa bằng cách gửi lại), xem lịch sử đọc/tải xuống và báo cáo tài liệu. Admin/Thủ thư có thể xử lý/từ chối báo cáo, ẩn/hiện nhận xét và phân trang kết quả tra cứu. Bảng quản trị hiển thị số liệu đọc, tải xuống và báo cáo từ dữ liệu thực. Tải lên PDF, EPUB và DOCX đã được nối vào luồng tạo tài liệu; PDF mở bằng trình xem tích hợp của trình duyệt, EPUB/DOCX được tải về. Phân quyền dùng cookie authentication với các vai trò Admin, Librarian và Reader. Admin có thể cấp hoặc thu hồi vai trò Thủ thư trong trang Người dùng; tài khoản Admin không thể bị đổi vai trò tại trang này.
+Dữ liệu danh mục, tài khoản, yêu thích, đánh giá, lịch sử đọc, lịch sử tải xuống và báo cáo lưu trong cơ sở dữ liệu. Độc giả đã đăng nhập có thể lưu/xóa yêu thích, gửi đánh giá (mỗi người một đánh giá cho mỗi tài liệu, có thể sửa bằng cách gửi lại), xem lịch sử đọc/tải xuống và báo cáo tài liệu. Admin/Thủ thư có thể xử lý/từ chối báo cáo, ẩn/hiện nhận xét, quản lý danh mục/tác giả/nhà xuất bản và phân trang kết quả tra cứu. Tên thư mục được kiểm tra và đồng bộ sang các tài liệu khi đổi tên; mục đang được dùng không thể xóa. Bảng quản trị hiển thị số liệu đọc, tải xuống và báo cáo từ dữ liệu thực. Tải lên PDF, EPUB và DOCX đã được nối vào luồng tạo tài liệu; PDF mở bằng trình xem tích hợp của trình duyệt, EPUB/DOCX được tải về. Phân quyền dùng cookie authentication với các vai trò Admin, Librarian và Reader. Admin có thể cấp hoặc thu hồi vai trò Thủ thư trong trang Người dùng; tài khoản Admin không thể bị đổi vai trò tại trang này.

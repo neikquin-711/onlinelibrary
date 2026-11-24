@@ -13,7 +13,12 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
 {
     private const long MaxUploadBytes = 25 * 1024 * 1024;
     private string DocumentStoragePath => Path.Combine(environment.ContentRootPath, "App_Data", "documents");
-    public async Task<IActionResult> Index() => View(await db.Documents.AsNoTracking().OrderByDescending(d => d.Reads).ToListAsync());
+    public async Task<IActionResult> Index()
+    {
+        ViewBag.Categories = await db.LibraryReferences.AsNoTracking().Where(r => r.Type == "Category" && r.IsActive)
+            .OrderBy(r => r.Name).ToListAsync();
+        return View(await db.Documents.AsNoTracking().OrderByDescending(d => d.Reads).ToListAsync());
+    }
 
     public async Task<IActionResult> Catalog(string? q, string? category, string? sort = "popular", int page = 1)
     {
@@ -30,6 +35,8 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         var totalPages = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
         page = Math.Clamp(page, 1, totalPages);
         var documents = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        ViewBag.Categories = await db.LibraryReferences.AsNoTracking().Where(r => r.Type == "Category" && r.IsActive)
+            .OrderBy(r => r.Name).Select(r => r.Name).ToListAsync();
         return View(new CatalogViewModel(documents, q, category ?? "Tất cả", sort ?? "popular", page, totalPages, total));
     }
 
@@ -289,34 +296,112 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     }
 
     [Authorize(Roles = "Admin,Librarian")]
+    public async Task<IActionResult> References() => View(await db.LibraryReferences.AsNoTracking()
+        .OrderBy(reference => reference.Type).ThenBy(reference => reference.Name).ToListAsync());
+
+    [Authorize(Roles = "Admin,Librarian")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddReference(string? type, string? name, string? description)
+    {
+        if (!IsReferenceType(type) || string.IsNullOrWhiteSpace(name) || name.Trim().Length > ReferenceNameLimit(type) || (description?.Length ?? 0) > 500)
+            TempData["ReferenceError"] = "Chọn loại hợp lệ; tên và mô tả phải nằm trong giới hạn ký tự cho phép.";
+        else if (await db.LibraryReferences.AnyAsync(r => r.Type == type && r.Name == name.Trim()))
+            TempData["ReferenceError"] = "Tên này đã tồn tại trong danh mục.";
+        else
+        {
+            db.LibraryReferences.Add(new LibraryReference { Type = type!, Name = name.Trim(), Description = description?.Trim() ?? "" });
+            await db.SaveChangesAsync();
+            TempData["ReferenceNotice"] = "Đã thêm mục thư viện.";
+        }
+        return RedirectToAction(nameof(References));
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RenameReference(int id, string? name, string? description)
+    {
+        var reference = await db.LibraryReferences.FirstOrDefaultAsync(r => r.Id == id);
+        if (reference is null) return NotFound();
+        var newName = name?.Trim();
+        if (string.IsNullOrWhiteSpace(newName) || newName.Length > ReferenceNameLimit(reference.Type) || (description?.Length ?? 0) > 500)
+            TempData["ReferenceError"] = "Tên bắt buộc và phải nằm trong giới hạn ký tự của loại mục.";
+        else if (await db.LibraryReferences.AnyAsync(r => r.Type == reference.Type && r.Name == newName && r.Id != id))
+            TempData["ReferenceError"] = "Tên này đã tồn tại trong nhóm.";
+        else
+        {
+            var oldName = reference.Name;
+            var documents = await db.Documents.Where(document => reference.Type == "Category" ? document.Category == oldName :
+                reference.Type == "Author" ? document.Author == oldName : document.Publisher == oldName).ToListAsync();
+            foreach (var document in documents)
+            {
+                if (reference.Type == "Category") document.Category = newName;
+                else if (reference.Type == "Author") document.Author = newName;
+                else document.Publisher = newName;
+            }
+            reference.Name = newName;
+            reference.Description = description?.Trim() ?? "";
+            await db.SaveChangesAsync();
+            TempData["ReferenceNotice"] = "Đã cập nhật mục và đồng bộ các tài liệu đang sử dụng mục này.";
+        }
+        return RedirectToAction(nameof(References));
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteReference(int id)
+    {
+        var reference = await db.LibraryReferences.FirstOrDefaultAsync(r => r.Id == id);
+        if (reference is null) return NotFound();
+        var inUse = await db.Documents.AnyAsync(document => reference.Type == "Category" ? document.Category == reference.Name :
+            reference.Type == "Author" ? document.Author == reference.Name : document.Publisher == reference.Name);
+        if (inUse) TempData["ReferenceError"] = "Mục này đang được tài liệu sử dụng. Hãy sửa tài liệu trước khi xóa.";
+        else
+        {
+            db.LibraryReferences.Remove(reference);
+            await db.SaveChangesAsync();
+            TempData["ReferenceNotice"] = "Đã xóa mục thư viện.";
+        }
+        return RedirectToAction(nameof(References));
+    }
+
+    [Authorize(Roles = "Admin,Librarian")]
     [HttpGet]
-    public IActionResult Create() => View();
+    public async Task<IActionResult> Create()
+    {
+        await PopulateReferenceOptionsAsync();
+        return View();
+    }
 
     [Authorize(Roles = "Admin,Librarian")]
     [HttpGet]
     public async Task<IActionResult> Edit(int id)
     {
         var document = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+        await PopulateReferenceOptionsAsync();
         return document is null ? NotFound() : View(document);
     }
 
     [Authorize(Roles = "Admin,Librarian")]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Edit(int id, string? title, string? author, string? category, int year,
+    public async Task<IActionResult> Edit(int id, string? title, string? author, string? category, string? publisher, int year,
         string? format, string? description, IFormFile? file)
     {
         var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == id);
         if (document is null) return NotFound();
-        var categories = new[] { "Văn học", "Tâm lý học", "Kỹ năng sống", "Lịch sử" };
         var formats = new[] { "PDF", "EPUB", "DOCX" };
         if (string.IsNullOrWhiteSpace(title) || title.Length > 120 || string.IsNullOrWhiteSpace(author) || author.Length > 100 ||
-            category is null || !categories.Contains(category) || year < 1000 || year > DateTime.UtcNow.Year ||
+            category is null || !await ReferenceExistsAsync("Category", category) || !await ReferenceExistsAsync("Author", author) ||
+            !await ReferenceExistsAsync("Publisher", publisher) || year < 1000 || year > DateTime.UtcNow.Year ||
             format is null || !formats.Contains(format) || string.IsNullOrWhiteSpace(description) || description.Length > 1000 ||
             (file is not null && file.Length is <= 0 or > MaxUploadBytes) ||
             (file is null && document.StoredFileName is not null && document.Format != format))
         {
             ViewBag.Error = "Kiểm tra các trường bắt buộc, năm xuất bản và tệp (tối đa 25 MB). Nếu đổi định dạng, hãy tải lên tệp thay thế.";
+            await PopulateReferenceOptionsAsync();
             return View(document);
         }
 
@@ -353,6 +438,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             document.Title = title.Trim();
             document.Author = author.Trim();
             document.Category = category!;
+            document.Publisher = publisher!;
             document.Year = year;
             document.Format = format!;
             document.Initials = new string(title.Trim().Take(2).ToArray()).ToUpperInvariant();
@@ -368,6 +454,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             ViewBag.Error = ex is InvalidDataException ? ex.Message : ex is TimeoutException
                 ? "Quét bảo mật quá thời gian. Tài liệu chưa được cập nhật."
                 : ex is InvalidOperationException ? ex.Message : "Không thể cập nhật tài liệu. Kiểm tra cấu hình quét virus và dung lượng lưu trữ.";
+            await PopulateReferenceOptionsAsync();
             return View(document);
         }
         if (newFileName is not null && previousFileName is not null && Path.GetFileName(previousFileName) == previousFileName)
@@ -382,16 +469,18 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     [Authorize(Roles = "Admin,Librarian")]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create(string? title, string? author, string? category, int year, string? format, string? description, IFormFile? file)
+    public async Task<IActionResult> Create(string? title, string? author, string? category, string? publisher,
+        int year, string? format, string? description, IFormFile? file)
     {
-        var categories = new[] { "Văn học", "Tâm lý học", "Kỹ năng sống", "Lịch sử" };
         var formats = new[] { "PDF", "EPUB", "DOCX" };
         if (string.IsNullOrWhiteSpace(title) || title.Length > 120 || string.IsNullOrWhiteSpace(author) || author.Length > 100 ||
-            category is null || !categories.Contains(category) || year < 1000 || year > DateTime.UtcNow.Year ||
+            category is null || !await ReferenceExistsAsync("Category", category) || !await ReferenceExistsAsync("Author", author) ||
+            !await ReferenceExistsAsync("Publisher", publisher) || year < 1000 || year > DateTime.UtcNow.Year ||
             format is null || !formats.Contains(format) || string.IsNullOrWhiteSpace(description) || description.Length > 1000 ||
             file is null || file.Length is <= 0 or > MaxUploadBytes)
         {
             ViewBag.Error = "Kiểm tra các trường bắt buộc, năm xuất bản và tệp (tối đa 25 MB).";
+            await PopulateReferenceOptionsAsync();
             return View();
         }
         var expectedMime = format switch
@@ -404,16 +493,18 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         if (!string.Equals(Path.GetExtension(file.FileName), expectedExtension, StringComparison.OrdinalIgnoreCase))
         {
             ViewBag.Error = "Phần mở rộng tệp không khớp với định dạng đã chọn.";
+            await PopulateReferenceOptionsAsync();
             return View();
         }
         if (!string.Equals(file.ContentType, expectedMime, StringComparison.OrdinalIgnoreCase) &&
             !(format == "EPUB" && file.ContentType == "application/octet-stream"))
         {
             ViewBag.Error = "Kiểu nội dung tệp không khớp với định dạng đã chọn.";
+            await PopulateReferenceOptionsAsync();
             return View();
         }
         try { await ValidateDocumentFileAsync(file, format); }
-        catch (InvalidDataException ex) { ViewBag.Error = ex.Message; return View(); }
+        catch (InvalidDataException ex) { ViewBag.Error = ex.Message; await PopulateReferenceOptionsAsync(); return View(); }
 
         var count = await db.Documents.CountAsync();
         var colors = new[] { "sand", "blue", "coral", "green", "violet", "peach", "mint", "rose" };
@@ -429,7 +520,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             System.IO.File.Move(temporaryPath, finalPath);
             db.Documents.Add(new LibraryDocument(0, title.Trim(), author.Trim(), category!, year, format,
                 colors[count % colors.Length], new string(title.Trim().Take(2).ToArray()).ToUpperInvariant(), description.Trim(), 0, 0)
-            { StoredFileName = storedName, FileMimeType = expectedMime, FileSizeBytes = file.Length });
+            { Publisher = publisher!, StoredFileName = storedName, FileMimeType = expectedMime, FileSizeBytes = file.Length });
             await db.SaveChangesAsync();
         }
         catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or TimeoutException or IOException or DbUpdateException)
@@ -439,6 +530,7 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
             ViewBag.Error = ex is InvalidDataException ? ex.Message : ex is TimeoutException
                 ? "Quét bảo mật quá thời gian. Tệp chưa được lưu."
                 : ex is InvalidOperationException ? ex.Message : "Không thể lưu tệp. Kiểm tra cấu hình quét virus và dung lượng lưu trữ.";
+            await PopulateReferenceOptionsAsync();
             return View();
         }
         return RedirectToAction(nameof(Admin));
@@ -506,4 +598,17 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         "DOCX" => ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"),
         _ => throw new InvalidDataException("Định dạng tệp không được hỗ trợ.")
     };
+
+    private async Task PopulateReferenceOptionsAsync()
+    {
+        ViewBag.Categories = await db.LibraryReferences.AsNoTracking().Where(r => r.Type == "Category" && r.IsActive).OrderBy(r => r.Name).ToListAsync();
+        ViewBag.Authors = await db.LibraryReferences.AsNoTracking().Where(r => r.Type == "Author" && r.IsActive).OrderBy(r => r.Name).ToListAsync();
+        ViewBag.Publishers = await db.LibraryReferences.AsNoTracking().Where(r => r.Type == "Publisher" && r.IsActive).OrderBy(r => r.Name).ToListAsync();
+    }
+
+    private async Task<bool> ReferenceExistsAsync(string type, string? name) =>
+        !string.IsNullOrWhiteSpace(name) && await db.LibraryReferences.AnyAsync(r => r.Type == type && r.Name == name.Trim() && r.IsActive);
+
+    private static bool IsReferenceType(string? type) => type is "Category" or "Author" or "Publisher";
+    private static int ReferenceNameLimit(string? type) => type switch { "Category" => 60, "Author" => 100, "Publisher" => 120, _ => 0 };
 }

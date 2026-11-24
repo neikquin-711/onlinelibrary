@@ -12,6 +12,7 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
     public DbSet<ReadingHistory> ReadingHistory => Set<ReadingHistory>();
     public DbSet<DocumentReport> DocumentReports => Set<DocumentReport>();
     public DbSet<DocumentDownload> DocumentDownloads => Set<DocumentDownload>();
+    public DbSet<LibraryReference> LibraryReferences => Set<LibraryReference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -20,6 +21,7 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
             entity.HasKey(d => d.Id);
             entity.Property(d => d.Title).HasMaxLength(120).IsRequired();
             entity.Property(d => d.Author).HasMaxLength(100).IsRequired();
+            entity.Property(d => d.Publisher).HasMaxLength(120).IsRequired();
             entity.Property(d => d.Category).HasMaxLength(60).IsRequired();
             entity.Property(d => d.Format).HasMaxLength(10).IsRequired();
             entity.Property(d => d.Color).HasMaxLength(20).IsRequired();
@@ -73,6 +75,14 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
             entity.HasIndex(d => d.DocumentId);
             entity.HasOne<LibraryUser>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<LibraryDocument>().WithMany().HasForeignKey(d => d.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<LibraryReference>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.HasIndex(r => new { r.Type, r.Name }).IsUnique();
+            entity.Property(r => r.Type).HasMaxLength(20).IsRequired();
+            entity.Property(r => r.Name).HasMaxLength(120).IsRequired();
+            entity.Property(r => r.Description).HasMaxLength(500).IsRequired();
         });
     }
 }
