@@ -33,12 +33,23 @@ public class AccountController(LibraryDbContext db, IPasswordHasher<LibraryUser>
     }
 
     [HttpGet]
-    public IActionResult Register() => View();
+    public async Task<IActionResult> Register()
+    {
+        ViewBag.RegistrationEnabled = await IsRegistrationEnabledAsync();
+        return View();
+    }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Register(string? displayName, string? email, string? password)
     {
+        if (!await IsRegistrationEnabledAsync())
+        {
+            ViewBag.RegistrationEnabled = false;
+            ViewBag.Error = "Thư viện hiện tạm đóng đăng ký tài khoản mới.";
+            return View();
+        }
+        ViewBag.RegistrationEnabled = true;
         var normalizedEmail = email?.Trim().ToLowerInvariant();
         var valid = !string.IsNullOrWhiteSpace(displayName) && displayName.Trim().Length <= 80 &&
             normalizedEmail is not null && normalizedEmail.Length <= 254 &&
@@ -142,4 +153,7 @@ public class AccountController(LibraryDbContext db, IPasswordHasher<LibraryUser>
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(identity), new AuthenticationProperties { IsPersistent = rememberMe });
     }
+
+    private async Task<bool> IsRegistrationEnabledAsync() =>
+        (await db.SystemSettings.AsNoTracking().FirstOrDefaultAsync(settings => settings.Id == 1))?.RegistrationEnabled ?? true;
 }

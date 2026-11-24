@@ -1,0 +1,8 @@
+@model LibrarySystemSettings
+@{ ViewData["Title"] = "Cấu hình hệ thống"; }
+<section class="admin wrap">
+    <div class="breadcrumbs"><a asp-action="Admin">Quản lý</a><span>/</span><span>Cấu hình hệ thống</span></div>
+    <div class="admin-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> THIẾT LẬP ONLIBRARY</div><h1>Cấu hình <em>hệ thống.</em></h1><p>Điều chỉnh quyền đăng ký tài khoản mới.</p></div></div>
+    @if(TempData["SettingsNotice"] is not null){<div class="user-notice">@TempData["SettingsNotice"]</div>}
+    <div class="system-settings-card"><form asp-action="Settings" method="post"><label class="setting-toggle"><input type="checkbox" name="registrationEnabled" value="true" checked="@Model.RegistrationEnabled"/><span><strong>Cho phép đăng ký công khai</strong><small>Khi tắt, khách truy cập không thể tự tạo tài khoản. Admin vẫn có thể tạo tài khoản từ trang quản lý người dùng.</small></span></label><button class="primary-button" type="submit">Lưu cấu hình <span>→</span></button></form><p class="muted">Cập nhật lần cuối: @Model.UpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm") · @Model.UpdatedBy</p></div>
+</section>

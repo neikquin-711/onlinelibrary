@@ -454,6 +454,25 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         .OrderByDescending(log => log.CreatedAt).Take(250).ToListAsync());
 
     [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Settings() => View(await db.SystemSettings.AsNoTracking().FirstAsync(settings => settings.Id == 1));
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Settings(bool registrationEnabled)
+    {
+        var settings = await db.SystemSettings.FirstAsync(item => item.Id == 1);
+        settings.RegistrationEnabled = registrationEnabled;
+        settings.UpdatedAt = DateTime.UtcNow;
+        settings.UpdatedBy = User.FindFirstValue(ClaimTypes.Email) ?? "unknown";
+        await db.SaveChangesAsync();
+        await RecordAdminActionAsync("Update settings", "System", settings.Id,
+            $"Public registration {(registrationEnabled ? "enabled" : "disabled")}.");
+        TempData["SettingsNotice"] = "Đã lưu cấu hình hệ thống.";
+        return RedirectToAction(nameof(Settings));
+    }
+
+    [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SetUserRole(int id, string? role)

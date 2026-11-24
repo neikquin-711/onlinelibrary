@@ -14,6 +14,7 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
     public DbSet<DocumentDownload> DocumentDownloads => Set<DocumentDownload>();
     public DbSet<LibraryReference> LibraryReferences => Set<LibraryReference>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
+    public DbSet<LibrarySystemSettings> SystemSettings => Set<LibrarySystemSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -95,6 +96,12 @@ public sealed class LibraryDbContext(DbContextOptions<LibraryDbContext> options)
             entity.Property(log => log.EntityType).HasMaxLength(40).IsRequired();
             entity.Property(log => log.Summary).HasMaxLength(500).IsRequired();
             entity.HasIndex(log => log.CreatedAt);
+        });
+        modelBuilder.Entity<LibrarySystemSettings>(entity =>
+        {
+            entity.ToTable("LibrarySystemSettings");
+            entity.HasKey(settings => settings.Id);
+            entity.Property(settings => settings.UpdatedBy).HasMaxLength(254).IsRequired();
         });
     }
 }

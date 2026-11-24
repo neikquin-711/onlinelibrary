@@ -19,6 +19,7 @@ public static class LibraryDataSeeder
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'IsApproved') IS NULL ALTER TABLE [Documents] ADD [IsApproved] bit NOT NULL CONSTRAINT [DF_Documents_IsApproved] DEFAULT 1;");
             await db.Database.ExecuteSqlRawAsync("IF COL_LENGTH('Documents', 'IsRejected') IS NULL ALTER TABLE [Documents] ADD [IsRejected] bit NOT NULL CONSTRAINT [DF_Documents_IsRejected] DEFAULT 0;");
             await db.Database.ExecuteSqlRawAsync("""IF OBJECT_ID(N'dbo.AdminAuditLogs', N'U') IS NULL CREATE TABLE [dbo].[AdminAuditLogs] ([Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_AdminAuditLogs] PRIMARY KEY, [ActorEmail] nvarchar(254) NOT NULL, [Action] nvarchar(40) NOT NULL, [EntityType] nvarchar(40) NOT NULL, [EntityId] int NULL, [Summary] nvarchar(500) NOT NULL, [CreatedAt] datetime2 NOT NULL);""");
+            await db.Database.ExecuteSqlRawAsync("""IF OBJECT_ID(N'dbo.LibrarySystemSettings', N'U') IS NULL CREATE TABLE [dbo].[LibrarySystemSettings] ([Id] int NOT NULL CONSTRAINT [PK_LibrarySystemSettings] PRIMARY KEY, [RegistrationEnabled] bit NOT NULL, [UpdatedAt] datetime2 NOT NULL, [UpdatedBy] nvarchar(254) NOT NULL);""");
             await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.Favorites', N'U') IS NULL CREATE TABLE [dbo].[Favorites] ([UserId] int NOT NULL, [DocumentId] int NOT NULL, [CreatedAt] datetime2 NOT NULL CONSTRAINT [DF_Favorites_CreatedAt] DEFAULT SYSUTCDATETIME(), CONSTRAINT [PK_Favorites] PRIMARY KEY ([UserId], [DocumentId]), CONSTRAINT [FK_Favorites_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_Favorites_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
             await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Favorites_DocumentId' AND object_id = OBJECT_ID(N'dbo.Favorites')) CREATE INDEX [IX_Favorites_DocumentId] ON [dbo].[Favorites] ([DocumentId]);");
             await db.Database.ExecuteSqlRawAsync("IF OBJECT_ID(N'dbo.Reviews', N'U') IS NULL CREATE TABLE [dbo].[Reviews] ([Id] int IDENTITY(1,1) NOT NULL, [UserId] int NOT NULL, [DocumentId] int NOT NULL, [Rating] int NOT NULL, [Comment] nvarchar(1000) NOT NULL, [CreatedAt] datetime2 NOT NULL, [UpdatedAt] datetime2 NOT NULL, CONSTRAINT [PK_Reviews] PRIMARY KEY ([Id]), CONSTRAINT [FK_Reviews_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users]([Id]) ON DELETE CASCADE, CONSTRAINT [FK_Reviews_Documents] FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[Documents]([Id]) ON DELETE CASCADE);");
@@ -50,6 +51,12 @@ public static class LibraryDataSeeder
             await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IF NOT EXISTS \"IX_LibraryReferences_Type_Name\" ON \"LibraryReferences\" (\"Type\", \"Name\");");
             await db.Database.ExecuteSqlRawAsync("""CREATE TABLE IF NOT EXISTS "AdminAuditLogs" ("Id" INTEGER NOT NULL CONSTRAINT "PK_AdminAuditLogs" PRIMARY KEY AUTOINCREMENT, "ActorEmail" TEXT NOT NULL, "Action" TEXT NOT NULL, "EntityType" TEXT NOT NULL, "EntityId" INTEGER NULL, "Summary" TEXT NOT NULL, "CreatedAt" TEXT NOT NULL);""");
             await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_AdminAuditLogs_CreatedAt" ON "AdminAuditLogs" ("CreatedAt");""");
+            await db.Database.ExecuteSqlRawAsync("""CREATE TABLE IF NOT EXISTS "LibrarySystemSettings" ("Id" INTEGER NOT NULL CONSTRAINT "PK_LibrarySystemSettings" PRIMARY KEY, "RegistrationEnabled" INTEGER NOT NULL, "UpdatedAt" TEXT NOT NULL, "UpdatedBy" TEXT NOT NULL);""");
+        }
+        if (!await db.SystemSettings.AnyAsync())
+        {
+            db.SystemSettings.Add(new LibrarySystemSettings());
+            await db.SaveChangesAsync();
         }
         if (!await db.Documents.AnyAsync())
         {
