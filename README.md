@@ -7,7 +7,7 @@ Website thư viện trực tuyến xây dựng bằng ASP.NET Core MVC (.NET 9),
 ## Chạy ứng dụng
 
 ```powershell
-
+dotnet run
 
 ```
 
