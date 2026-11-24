@@ -273,6 +273,36 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
         return View(model);
     }
 
+    [Authorize(Roles = "Admin,Librarian")]
+    public async Task<IActionResult> ExportStatistics()
+    {
+        var documents = await db.Documents.AsNoTracking().OrderBy(d => d.Title).ToListAsync();
+        var downloadCounts = await db.DocumentDownloads.AsNoTracking().GroupBy(d => d.DocumentId)
+            .Select(group => new { DocumentId = group.Key, Count = group.Count() }).ToDictionaryAsync(x => x.DocumentId, x => x.Count);
+        var reviewStats = await db.Reviews.AsNoTracking().Where(r => !r.IsHidden).GroupBy(r => r.DocumentId)
+            .Select(group => new { DocumentId = group.Key, Average = group.Average(r => (double)r.Rating), Count = group.Count() })
+            .ToDictionaryAsync(x => x.DocumentId);
+        static string Csv(string? value)
+        {
+            var safe = value ?? "";
+            if (safe.Length > 0 && "=+-@\t\r".Contains(safe[0])) safe = "'" + safe;
+            return "\"" + safe.Replace("\"", "\"\"") + "\"";
+        }
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("Tài liệu,Tác giả,Danh mục,Năm,Lượt đọc,Lượt tải xuống,Điểm đánh giá,Số đánh giá");
+        foreach (var document in documents)
+        {
+            reviewStats.TryGetValue(document.Id, out var review);
+            builder.Append(Csv(document.Title)).Append(',').Append(Csv(document.Author)).Append(',')
+                .Append(Csv(document.Category)).Append(',').Append(document.Year).Append(',').Append(document.Reads).Append(',')
+                .Append(downloadCounts.GetValueOrDefault(document.Id)).Append(',')
+                .Append(review?.Average.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) ?? "0.00").Append(',')
+                .AppendLine((review?.Count ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(builder.ToString())).ToArray();
+        return File(bytes, "text/csv; charset=utf-8", $"onlibrary-statistics-{DateTime.UtcNow:yyyyMMdd}.csv");
+    }
+
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Users() => View(await db.Users.AsNoTracking()
         .OrderBy(u => u.Role).ThenBy(u => u.DisplayName).ToListAsync());
