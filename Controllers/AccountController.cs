@@ -54,10 +54,10 @@ public class AccountController(LibraryDbContext db, IPasswordHasher<LibraryUser>
         var valid = !string.IsNullOrWhiteSpace(displayName) && displayName.Trim().Length <= 80 &&
             normalizedEmail is not null && normalizedEmail.Length <= 254 &&
             Regex.IsMatch(normalizedEmail, @"^[^\s@]+@[^\s@]+\.[^\s@]+$") &&
-            password is { Length: >= 10 and <= 128 } && password.Any(char.IsUpper) && password.Any(char.IsLower) && password.Any(char.IsDigit);
+            password is { Length: >= 8 and <= 128 } && password.Any(char.IsUpper) && password.Any(char.IsLower) && password.Any(char.IsDigit);
         if (!valid)
         {
-            ViewBag.Error = "Hãy nhập tên, email hợp lệ và mật khẩu từ 10 ký tự gồm chữ hoa, chữ thường và số.";
+            ViewBag.Error = "Hãy nhập tên, email hợp lệ và mật khẩu từ 8 ký tự gồm chữ hoa, chữ thường và số.";
             return View();
         }
         if (await db.Users.AnyAsync(u => u.Email == normalizedEmail))
