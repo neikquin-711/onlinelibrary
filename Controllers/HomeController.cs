@@ -143,6 +143,33 @@ public class HomeController(LibraryDbContext db, IWebHostEnvironment environment
     [Authorize(Roles = "Admin,Librarian")]
     public async Task<IActionResult> Admin() => View(await db.Documents.AsNoTracking().OrderByDescending(d => d.Id).ToListAsync());
 
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Users() => View(await db.Users.AsNoTracking()
+        .OrderBy(u => u.Role).ThenBy(u => u.DisplayName).ToListAsync());
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetUserRole(int id, string? role)
+    {
+        if (role is not ("Reader" or "Librarian"))
+        {
+            TempData["UserAdminError"] = "Chỉ có thể gán vai trò Độc giả hoặc Thủ thư từ trang này.";
+            return RedirectToAction(nameof(Users));
+        }
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id);
+        if (user is null) return NotFound();
+        if (user.Role == "Admin")
+        {
+            TempData["UserAdminError"] = "Tài khoản Admin được bảo vệ và không thể đổi vai trò tại đây.";
+            return RedirectToAction(nameof(Users));
+        }
+        user.Role = role;
+        await db.SaveChangesAsync();
+        TempData["UserAdminNotice"] = $"Đã cập nhật vai trò của {user.DisplayName}.";
+        return RedirectToAction(nameof(Users));
+    }
+
     [Authorize(Roles = "Admin,Librarian")]
     [HttpGet]
     public IActionResult Create() => View();
