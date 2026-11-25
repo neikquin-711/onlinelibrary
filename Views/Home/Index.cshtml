@@ -7,7 +7,26 @@
   </div>
   <div class="hero-art"><div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div><div class="sun"></div><div class="hero-book book-back"><span>THE<br>ALCHEMIST</span><small>PAULO COELHO</small></div><div class="hero-book book-front"><span>THE<br>ART OF<br>READING</span><small>A QUIET MOMENT</small></div><div class="art-caption">01 — 08 <span>CURATED FOR YOU</span></div><div class="floating-note">✳ &nbsp; Hôm nay đọc gì?</div></div>
 </section>
+@if(Model.Count > 0)
+{
+<section class="hot-books wrap" aria-label="Sách đang được quan tâm">
+    <div class="hot-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> ĐANG ĐƯỢC QUAN TÂM</div><h2>Sách hot <em>tuần này.</em></h2><p>Những cuốn sách được độc giả tìm đọc nhiều.</p></div>
+        <div class="hot-controls"><button type="button" data-hot-prev aria-label="Sách trước">←</button><button type="button" data-hot-next aria-label="Sách tiếp theo">→</button></div>
+    </div>
+    <div class="hot-track" id="hot-book-track" tabindex="0" aria-label="Banner sách nổi bật">
+        @foreach(var book in Model.Take(6))
+        {
+            <article class="hot-slide">
+                <div class="hot-slide-copy"><span class="hot-badge">✦ NỔI BẬT · @book.Reads.ToString("N0") lượt đọc</span><span class="hot-category">@book.Category · @book.Year</span><h3>@book.Title</h3><p class="hot-author">@book.Author</p><p class="hot-description">@book.Description</p><div class="hot-rating"><span>★★★★★</span> @book.Rating.ToString("0.0") <span class="hot-format">@book.Format</span></div><a class="primary-button" asp-action="Details" asp-route-id="@book.Id">Khám phá cuốn sách <span>→</span></a></div>
+                <a class="hot-slide-art" asp-action="Details" asp-route-id="@book.Id" aria-label="Xem @book.Title"><div class="hot-cover @book.Color"><span class="cover-kicker">ONLIBRARY EDITION</span><strong>@book.Title</strong><small>@book.Author</small><i>✳</i></div><span class="hot-art-caption">MỘT CUỐN SÁCH ĐÁNG ĐỌC</span></a>
+            </article>
+        }
+    </div>
+    <div class="hot-footer"><span data-hot-count>01 / @Model.Take(6).Count().ToString("00")</span><div class="hot-dots" aria-label="Chọn banner">@for(var i=0;i<Model.Take(6).Count();i++){<button type="button" data-hot-dot="@i" aria-label="Đến banner @(i+1)" class="@(i == 0 ? "active" : "")"></button>}</div><span>Cuộn để xem thêm <b>→</b></span></div>
+</section>
+}
 <section class="stats-strip"><div><strong>1.280<span>+</span></strong><small>ĐẦU SÁCH</small></div><div><strong>42</strong><small>CHỦ ĐỀ</small></div><div><strong>2.4k<span>+</span></strong><small>ĐỘC GIẢ</small></div><div class="stats-quote">“Đọc sách là cách ta sống thêm<br>một nghìn cuộc đời.”</div></section>
 <section class="wrap section-block"><div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> ĐƯỢC TUYỂN CHỌN</div><h2>Đọc giả đang yêu thích</h2></div><a class="text-link" asp-controller="Home" asp-action="Catalog">Khám phá tất cả <span>↗</span></a></div>
 <div class="book-grid">@foreach (var book in Model.Take(4)) { <article class="book-card"><a asp-action="Details" asp-route-id="@book.Id" class="cover @book.Color"><span class="cover-kicker">ONLIBRARY EDITION</span><span class="cover-title">@book.Title</span><span class="cover-author">@book.Author</span><span class="cover-seal">✳</span></a><div class="book-meta"><div><a class="book-title" asp-action="Details" asp-route-id="@book.Id">@book.Title</a><div class="book-author">@book.Author</div></div><form asp-action="Favorite" method="post"><input type="hidden" name="id" value="@book.Id"/><button class="save-button" aria-label="Lưu yêu thích" type="submit">♡</button></form></div><div class="book-foot"><span>★ @book.Rating.ToString("0.0")</span><span>@book.Category</span><span>@book.Format</span></div></article> }</div></section>
-<section class="wrap category-section"><div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> TÌM THEO TÂM TRẠNG</div><h2>Điều bạn muốn khám phá?</h2></div><span class="muted">Một chủ đề hay có thể thay đổi cả ngày của bạn.</span></div><div class="category-grid">@{var categories = ViewBag.Categories as IReadOnlyList<LibraryReference> ?? []; var index = 1;}@foreach(var category in categories.Take(8)){<a asp-controller="Home" asp-action="Catalog" asp-route-category="@category.Name"><span>@index.ToString("00")</span><strong>@category.Name</strong><i>↗</i></a> index++;}</div></section>
+<section class="wrap category-section"><div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> TÌM THEO TÂM TRẠNG</div><h2>Điều bạn muốn khám phá?</h2></div><a class="text-link" asp-action="Categories">Xem tất cả chủ đề <span>→</span></a></div><div class="category-grid">@{var categories = ViewBag.Categories as IReadOnlyList<LibraryReference> ?? []; var index = 1;}@foreach(var category in categories.Take(8)){<a asp-controller="Home" asp-action="Catalog" asp-route-category="@category.Name"><span>@index.ToString("00")</span><strong>@category.Name</strong><i>↗</i></a> index++;}</div></section>
+@section Scripts { <script src="~/js/hot-books.js" asp-append-version="true"></script> }
