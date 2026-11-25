@@ -1,48 +1,51 @@
 (() => {
-  const bookLinks = [...document.querySelectorAll(".hot-slide-art")];
-  if (!bookLinks.length) return;
+  const triggers = [...document.querySelectorAll(".hot-slide-art, .home-book-cover")];
+  if (!triggers.length) return;
 
-  const open = link => {
-    link.classList.add("is-details-open");
-    link.setAttribute("aria-expanded", "true");
+  const ownerFor = trigger => trigger.closest(".home-book-card") || trigger;
+  const open = trigger => {
+    ownerFor(trigger).classList.add("is-details-open");
+    trigger.setAttribute("aria-expanded", "true");
   };
-  const close = link => {
-    link.classList.remove("is-details-open");
-    link.setAttribute("aria-expanded", "false");
+  const close = trigger => {
+    ownerFor(trigger).classList.remove("is-details-open");
+    trigger.setAttribute("aria-expanded", "false");
   };
 
-  for (const link of bookLinks) {
+  for (const trigger of triggers) {
+    const owner = ownerFor(trigger);
     let holdTimer;
     let holdTriggered = false;
     let suppressNextClick = false;
 
-    link.addEventListener("pointerenter", event => {
-      if (event.pointerType === "mouse") open(link);
+    const hoverTarget = trigger.matches(".home-book-cover") ? owner : trigger;
+    hoverTarget.addEventListener("pointerenter", event => {
+      if (event.pointerType === "mouse") open(trigger);
     });
-    link.addEventListener("pointerleave", event => {
-      if (event.pointerType === "mouse") close(link);
+    hoverTarget.addEventListener("pointerleave", event => {
+      if (event.pointerType === "mouse") close(trigger);
     });
-    link.addEventListener("focus", () => open(link));
-    link.addEventListener("blur", () => close(link));
+    trigger.addEventListener("focus", () => open(trigger));
+    trigger.addEventListener("blur", () => close(trigger));
 
-    link.addEventListener("pointerdown", event => {
+    trigger.addEventListener("pointerdown", event => {
       if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
       holdTriggered = false;
-      if (link.classList.contains("is-details-open")) {
-        close(link);
+      if (owner.classList.contains("is-details-open")) {
+        close(trigger);
         suppressNextClick = true;
         return;
       }
       holdTimer = window.setTimeout(() => {
         holdTriggered = true;
         suppressNextClick = true;
-        open(link);
+        open(trigger);
       }, 520);
     });
     const cancelHold = () => window.clearTimeout(holdTimer);
-    link.addEventListener("pointerup", cancelHold);
-    link.addEventListener("pointercancel", cancelHold);
-    link.addEventListener("click", event => {
+    trigger.addEventListener("pointerup", cancelHold);
+    trigger.addEventListener("pointercancel", cancelHold);
+    trigger.addEventListener("click", event => {
       if (!suppressNextClick && !holdTriggered) return;
       event.preventDefault();
       event.stopPropagation();
@@ -53,8 +56,8 @@
 
   document.addEventListener("pointerdown", event => {
     if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
-    for (const link of bookLinks) {
-      if (!link.contains(event.target)) close(link);
+    for (const trigger of triggers) {
+      if (!ownerFor(trigger).contains(event.target)) close(trigger);
     }
   });
 })();
